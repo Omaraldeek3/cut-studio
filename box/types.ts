@@ -1,5 +1,5 @@
 import { finite } from '../geometry';
-import { slab, type BoxModel, type CutVolume, type Joint, type ModelPart, type Vec3 } from './model';
+import { intersect, slab, type BoxModel, type CutVolume, type Joint, type ModelPart, type Vec3 } from './model';
 
 export type BoxType = 'closed' | 'open' | 'liftoff' | 'sliding' | 'drawer';
 export type BoxOptions = {
@@ -8,12 +8,15 @@ export type BoxOptions = {
   rows: number; columns: number; labels: boolean;
   handHoles: { enabled: boolean; width: number; height: number; fromTop: number };
   pull: 'none' | 'thumb' | 'slot'; pullSize: number; cornerRadius: number; dogbone: number;
+  /** Edge groups built as plain butt joints (for glue) instead of fingers. */
+  flat: { corners: boolean; bottom: boolean; top: boolean };
 };
 export type Size = { width: number; depth: number; height: number };
 
 export const defaultBoxOptions: BoxOptions = {
   type: 'closed', width: 120, depth: 80, height: 60, sizing: 'outside', thickness: 3, finger: 10, kerf: 0, clearance: 0.3, spacing: 5,
   rows: 0, columns: 0, labels: true, handHoles: { enabled: false, width: 50, height: 18, fromTop: 12 }, pull: 'thumb', pullSize: 20, cornerRadius: 0, dogbone: 0,
+  flat: { corners: false, bottom: false, top: false },
 };
 export const hasLid = (type: BoxType) => type === 'liftoff' || type === 'sliding' || type === 'drawer';
 
@@ -111,9 +114,41 @@ export function buildModel(o: BoxOptions): { model: BoxModel; outside: Size; ins
   for (const p of parts) { p.name = p.name.replace(/ (Bottom|Top|Front|Back|Left|Right)$/, (_, w: string) => ` ${w.toLowerCase()}`); p.label = p.name.toUpperCase(); }
   const named = (name: string) => name.replace(/ (Bottom|Top|Front|Back|Left|Right)$/, (_, w: string) => ` ${w.toLowerCase()}`);
   compartment = { ...compartment, left: named(compartment.left), right: named(compartment.right), front: named(compartment.front), back: named(compartment.back) };
+  addFlatEdges(o, parts, joints);
   addDividers(o, compartment, parts, joints);
   addHoles(o, W, D, H, parts, cuts);
   return { model: { parts, joints, cuts, thickness: t, finger: o.finger }, outside, inside };
+}
+
+type EdgeGroup = keyof BoxOptions['flat'];
+/** Which switchable edge group a pair of box panels belongs to, if any. */
+function edgeGroup(a: string, b: string): EdgeGroup | null {
+  const side = (name: string) => name.replace(/^(Sleeve|Drawer) /, '').toLowerCase();
+  const sides = [side(a), side(b)], has = (...names: string[]) => sides.some(s => names.includes(s));
+  const walls = has('front', 'back', 'left', 'right');
+  if (has('front', 'back') && has('left', 'right')) return 'corners';
+  if (has('bottom') && walls) return 'bottom';
+  if (has('top') && walls) return 'top';
+  return null;
+}
+
+/**
+ * Flat edges replace fingers with a butt joint: the whole overlap goes to one part,
+ * the one that would keep the corners anyway (front/back over sides, walls over
+ * bottom/top), or the part a special joint already favours (sliding lid back corners).
+ */
+function addFlatEdges(o: BoxOptions, parts: ModelPart[], joints: Joint[]) {
+  if (!o.flat.corners && !o.flat.bottom && !o.flat.top) return;
+  for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
+    const a = parts[i], b = parts[j], group = edgeGroup(a.name, b.name);
+    if (!group || !o.flat[group] || !intersect(a.slab, b.slab)) continue;
+    const index = joints.findIndex(joint => (joint.a === a.name && joint.b === b.name) || (joint.a === b.name && joint.b === a.name));
+    const existing = index >= 0 ? joints[index].rule : null;
+    if (existing && existing.kind !== 'fingers') continue;
+    const winner = existing?.kind === 'fingers' && existing.primary ? existing.primary : a.priority > b.priority || (a.priority === b.priority && a.name < b.name) ? a.name : b.name;
+    const joint: Joint = { a: a.name, b: b.name, rule: { kind: 'owner', part: winner } };
+    if (index >= 0) joints[index] = joint; else joints.push(joint);
+  }
 }
 
 /** Egg-crate dividers with through-tenons into the compartment walls. */

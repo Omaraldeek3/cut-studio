@@ -111,7 +111,13 @@ export class Ownership {
     const inside = pool.filter(part => contains(part.slab, p) && !this.model.cuts.some(cut => cut.shape === 'box' && cut.parts.includes(part.name) && contains(cut, p)));
     if (!inside.length) return null;
     if (inside.length === 1) return inside[0].name;
-    if (inside.length > 2) return inside.reduce((best, part) => this.ranks(best, part)[0]).name;
+    if (inside.length > 2) {
+      // A corner cube goes to the part that wins every pairing there: butt joints (owner rules)
+      // decide their pair, everything else falls back to priority.
+      const beats = (a: ModelPart, b: ModelPart) => { const rule = this.rule(a.name, b.name); return rule.kind === 'owner' ? rule.part === a.name : this.ranks(a, b)[0] === a; };
+      const winner = inside.find(a => inside.every(b => b === a || beats(a, b)));
+      return (winner || inside.reduce((best, part) => this.ranks(best, part)[0])).name;
+    }
     const [a, b] = inside, rule = this.rule(a.name, b.name);
     switch (rule.kind) {
       case 'owner': return rule.part;

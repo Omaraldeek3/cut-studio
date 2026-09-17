@@ -29,6 +29,7 @@ function partName(name: string, lang: Language) {
 export function BoxWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Drawing) => void }) {
   const [options, setOptions] = useState<BoxOptions>(defaultBoxOptions), [view, setView] = useState<'flat' | '3d'>('flat');
   const set = <K extends keyof BoxOptions>(key: K) => (value: BoxOptions[K]) => setOptions(o => ({ ...o, [key]: value }));
+  const setFlat = (key: keyof BoxOptions['flat']) => (value: boolean) => setOptions(o => ({ ...o, flat: { ...o.flat, [key]: value } }));
   const setHand = (key: keyof BoxOptions['handHoles']) => (value: number | boolean) => setOptions(o => ({ ...o, handHoles: { ...o.handHoles, [key]: value } }));
   const { result, error } = useMemo((): { result: BoxResult | null; error: string } => {
     try { return { result: buildBox(options), error: '' }; } catch (e) { return { result: null, error: e instanceof Error ? e.message : 'Invalid box settings.' }; }
@@ -54,6 +55,11 @@ export function BoxWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
       <div className="field-pair"><NumberField label={tx(lang, 'Material thickness', 'سماكة الخامة')} value={options.thickness} onChange={set('thickness')} min={0.5} max={30} step={0.1} unit="mm"/><NumberField label={tx(lang, 'Finger width', 'عرض السن')} value={options.finger} onChange={set('finger')} min={1} max={1000} step={0.5} unit="mm"/></div>
       <div className="field-pair"><NumberField label={tx(lang, 'Kerf compensation', 'تعويض سماكة القص')} value={options.kerf} onChange={set('kerf')} max={0.5} step={0.01} unit="mm"/><NumberField label={tx(lang, 'Clearance', 'الخلوص')} value={options.clearance} onChange={set('clearance')} max={2} step={0.05} unit="mm"/></div>
       <NumberField label={tx(lang, 'Panel spacing', 'تباعد الألواح')} value={options.spacing} onChange={set('spacing')} max={100} step={0.5} unit="mm"/>
+      <fieldset className="flat-edges"><legend>{tx(lang, 'Flat edges (glue, no fingers)', 'حواف مستوية (لصق بدون أسنان)')}</legend>
+        <Toggle label={tx(lang, 'Vertical corners', 'الزوايا الرأسية')} value={options.flat.corners} onChange={setFlat('corners')}/>
+        <Toggle label={tx(lang, 'Bottom edges', 'حواف القاعدة')} value={options.flat.bottom} onChange={setFlat('bottom')}/>
+        {(options.type === 'closed' || options.type === 'drawer') && <Toggle label={tx(lang, 'Top edges', 'حواف الغطاء العلوي')} value={options.flat.top} onChange={setFlat('top')}/>}
+      </fieldset>
       <p className="micro">{tx(lang, 'Kerf makes joints tight (measure it with Fit test). Clearance is the gap for lids, drawers and slots so they move freely.', 'تعويض القص يجعل التعشيق محكماً (قِسه بأداة اختبار التعشيق). الخلوص هو الفراغ اللازم لحركة الأغطية والأدراج.')}</p>
     </Section>
     <Section title={tx(lang, 'Dividers', 'الفواصل')} number="04">

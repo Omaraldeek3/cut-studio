@@ -5,7 +5,7 @@ export const titles:Record<ToolId,[string,string]>={nest:['Material nesting','ت
   hinge:['Living hinge','المفصل المرن'],gear:['Gear maker','صانع التروس'],puzzle:['Jigsaw puzzle','صانع البازل'],tag:['Tags & keychains','الميداليات والبطاقات'],pattern:['Grille patterns','نقوش التهوية'],testcard:['Power & speed test','بطاقة اختبار القوة والسرعة'],ruler:['Ruler maker','صانع المساطر'],sign:['Sign & name plate','اللافتات ولوحات الأسماء'],jobtime:['Job time estimate','تقدير زمن القص'],dpi:['Resolution & DPI','الدقة والـDPI']};
 export const descriptions:Record<ToolId,[string,string]>={
   nest:['A better fit for every piece. Arrange your outlines and make the most of your material.','رتّب حدود القطع للاستفادة من مساحة الخامة وتقليل الهدر.'],
-  trace:['Turn your logos and silhouettes into clean, editable vector paths.','حوّل الشعارات والرسومات أحادية اللون إلى مسارات قابلة للتعديل.'],
+  trace:['Trace logos, cartoons and photos into smooth colour vectors for print, or into clean outlines for the laser and plotter.','حوّل الشعارات والرسومات والصور إلى فيكتور ملوّن بمنحنيات ناعمة للطباعة، أو إلى حدود نظيفة للّيزر والبلوتر.'],
   clean:['Inspect open paths, remove duplicate contours, and clear away tiny details.','افحص المسارات المفتوحة وأزل الحدود المكررة والتفاصيل الصغيرة.'],
   repeat:['One design, exactly the size you need. Scale and repeat with precise spacing.','اضبط أبعاد التصميم وكرّره بمسافات دقيقة.'],
   cost:['Know your material cost before the first cut. Use your own prices and quantities.','احسب تكلفة الخامة قبل القص باستخدام أسعارك وكمياتك.'],

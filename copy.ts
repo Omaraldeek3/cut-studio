@@ -1,7 +1,8 @@
 export type Language='en'|'ar';
-export const toolIds=['nest','trace','clean','repeat','cost','kerf','engrave','box','hinge','gear','puzzle','tag','pattern','testcard','ruler','sign','jobtime','dpi'] as const;
+export const toolIds=['nest','trace','upscale','tiles','contour','lettering','clean','repeat','cost','kerf','engrave','box','hinge','gear','puzzle','tag','pattern','testcard','ruler','sign','jobtime','dpi'] as const;
 export type ToolId=typeof toolIds[number];
 export const titles:Record<ToolId,[string,string]>={nest:['Material nesting','ترتيب القطع'],trace:['Image to vector','تحويل صورة إلى فيكتور'],clean:['Vector cleanup','تنظيف الفيكتور'],repeat:['Resize & repeat','المقاس والتكرار'],cost:['Material cost','تكلفة الخامة'],kerf:['Fit test','اختبار التعشيق'],engrave:['Engraving prep','تجهيز صور الحفر'],box:['Box maker','صانع الصناديق'],
+  upscale:['AI upscaler','تكبير الصور بالذكاء الاصطناعي'],tiles:['Poster tiling','تقسيم البوستر'],contour:['Contour & offset','الكونتور والإزاحة'],lettering:['Arabic lettering','الكتابة العربية'],
   hinge:['Living hinge','المفصل المرن'],gear:['Gear maker','صانع التروس'],puzzle:['Jigsaw puzzle','صانع البازل'],tag:['Tags & keychains','الميداليات والبطاقات'],pattern:['Grille patterns','نقوش التهوية'],testcard:['Power & speed test','بطاقة اختبار القوة والسرعة'],ruler:['Ruler maker','صانع المساطر'],sign:['Sign & name plate','اللافتات ولوحات الأسماء'],jobtime:['Job time estimate','تقدير زمن القص'],dpi:['Resolution & DPI','الدقة والـDPI']};
 export const descriptions:Record<ToolId,[string,string]>={
   nest:['A better fit for every piece. Arrange your outlines and make the most of your material.','رتّب حدود القطع للاستفادة من مساحة الخامة وتقليل الهدر.'],
@@ -12,6 +13,10 @@ export const descriptions:Record<ToolId,[string,string]>={
   kerf:['Find the fit that feels right. Generate a slotted coupon for your material.','أنشئ عينة بفتحات مختلفة لاختيار المقاس الأنسب لتعشيق الخامة.'],
   engrave:['Prepare crisp, black-and-white images for your engraving workflow.','جهّز صوراً بالأبيض والأسود لتناسب أعمال الحفر.'],
   box:['Design a finger-joint box to your size and material, ready to cut.','صمّم صندوقاً بتعشيق الأسنان بمقاسك وسماكة خامتك، جاهزاً للقص.'],
+  upscale:['Enlarge a picture up to 4× with an AI model that draws in real detail, and save it with the right DPI for a large print.','كبّر الصورة حتى ٤ أضعاف بنموذج ذكاء اصطناعي يرسم تفاصيل حقيقية، واحفظها بالدقة المناسبة للطباعة الكبيرة.'],
+  tiles:['Split a large print into panels your printer can take, with overlap, numbers and marks for fitting.','قسّم الطباعة الكبيرة إلى ألواح بعرض طابعتك، مع تداخل وأرقام وعلامات للتركيب.'],
+  contour:['Add an outline around letters, logos or stickers: a base for acrylic letters, or a cut line for print and cut.','أضف حداً حول الحروف والشعارات والستيكرات: قاعدة للحروف البارزة أو خط قص للطباعة والقص.'],
+  lettering:['Type Arabic or English in any font on your computer and get joined, weldable outlines ready to cut.','اكتب بالعربية أو الإنجليزية بأي خط على جهازك واحصل على حدود متصلة جاهزة للقص.'],
   hinge:['Cut a flexing pattern into flat plywood or MDF so it bends around a curve.','اقطع نقشاً مرناً في لوح الخشب أو الـMDF ليلتف حول الانحناءات.'],
   gear:['Draw a true involute spur gear from its tooth count and module, with a bore.','ارسم ترساً بأسنان إنفوليوت حقيقية من عدد الأسنان والموديول، مع فتحة المحور.'],
   puzzle:['Generate a jigsaw with round tabs, a new shuffle each time you ask.','أنشئ بازلاً بألسنة دائرية، وترتيباً جديداً كلما طلبت.'],

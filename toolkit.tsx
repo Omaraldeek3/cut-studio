@@ -10,6 +10,7 @@ import { ImageWorkspace } from './image-workspaces';
 import { VectorizeWorkspace } from './vectorize-workspace';
 import { UpscaleWorkspace } from './upscale-workspace';
 import { TilingWorkspace } from './tiling-workspace';
+import { ContourWorkspace } from './contour-workspace';
 import { DpiWorkspace, GearWorkspace, HingeWorkspace, JobTimeWorkspace, PatternWorkspace, PuzzleWorkspace, RulerWorkspace, SignWorkspace, TagWorkspace, TestCardWorkspace } from './generator-workspaces';
 import { referenceDrawing, sampleDrawing } from './samples';
 import { download, toDxf, toSvg } from './export';
@@ -39,7 +40,7 @@ export default function Toolkit(){
   case 'trace':return <VectorizeWorkspace lang={lang} onNest={onNest}/>;
   case 'upscale':return <UpscaleWorkspace lang={lang}/>;
   case 'tiles':return <TilingWorkspace lang={lang}/>;
-  case 'contour':return <div className="ws-note">…</div>;
+  case 'contour':return <ContourWorkspace {...props}/>;
   case 'lettering':return <div className="ws-note">{onSend.name}</div>;
   case 'clean':case 'repeat':return <EditWorkspace key={active} {...props} tool={active}/>;
   case 'cost':return <CostWorkspace lang={lang}/>;

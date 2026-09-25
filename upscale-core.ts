@@ -452,7 +452,7 @@ export class JpegStream {
 // ——— PNG ———————————————————————————————————————————————————————————————
 
 /** PNG written row by row through the browser's own deflate, with the print
- *  resolution in its pHYs chunk. RGB or RGBA, 8 bits per channel. */
+ *  resolution in its pHYs chunk. Grey, RGB or RGBA, 8 bits per channel. */
 export class PngStream {
   private readonly head: Uint8Array<ArrayBuffer>[] = [];
   private readonly body: Uint8Array<ArrayBuffer>[] = [];
@@ -462,9 +462,9 @@ export class PngStream {
   private rowsIn = 0;
   readonly width: number;
   readonly height: number;
-  readonly channels: 3 | 4;
+  readonly channels: 1 | 3 | 4;
 
-  constructor(width: number, height: number, channels: 3 | 4, dpi = 0) {
+  constructor(width: number, height: number, channels: 1 | 3 | 4, dpi = 0) {
     this.width = width;
     this.height = height;
     this.channels = channels;
@@ -472,7 +472,7 @@ export class PngStream {
     const ihdr = new Uint8Array(13);
     const view = new DataView(ihdr.buffer);
     view.setUint32(0, width); view.setUint32(4, height);
-    ihdr[8] = 8; ihdr[9] = channels === 4 ? 6 : 2; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+    ihdr[8] = 8; ihdr[9] = channels === 4 ? 6 : channels === 3 ? 2 : 0; ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
     this.head.push(chunk('IHDR', ihdr));
     if (dpi) {
       const phys = new Uint8Array(9);

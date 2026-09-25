@@ -6,7 +6,7 @@ import { Icon } from './ui';
 import { NestWorkspace, EditWorkspace, KerfWorkspace } from './vector-workspaces';
 import { CostWorkspace } from './cost-workspace';
 import { BoxWorkspace } from './box-workspace';
-import { ImageWorkspace } from './image-workspaces';
+import { EngraveWorkspace } from './engrave-workspace';
 import { VectorizeWorkspace } from './vectorize-workspace';
 import { UpscaleWorkspace } from './upscale-workspace';
 import { TilingWorkspace } from './tiling-workspace';
@@ -46,7 +46,7 @@ export default function Toolkit(){
   case 'clean':case 'repeat':return <EditWorkspace key={active} {...props} tool={active}/>;
   case 'cost':return <CostWorkspace lang={lang}/>;
   case 'kerf':return <KerfWorkspace lang={lang}/>;
-  case 'engrave':return <ImageWorkspace key={active} lang={lang} tool={active} onNest={onNest}/>;
+  case 'engrave':return <EngraveWorkspace lang={lang}/>;
   case 'box':return <BoxWorkspace lang={lang} onNest={onNest}/>;
   case 'hinge':return <HingeWorkspace lang={lang} onNest={onNest}/>;
   case 'gear':return <GearWorkspace lang={lang} onNest={onNest}/>;

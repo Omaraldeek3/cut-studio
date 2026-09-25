@@ -11,7 +11,7 @@ export const descriptions:Record<ToolId,[string,string]>={
   repeat:['One design, exactly the size you need. Scale and repeat with precise spacing.','اضبط أبعاد التصميم وكرّره بمسافات دقيقة.'],
   cost:['Know your material cost before the first cut. Use your own prices and quantities.','احسب تكلفة الخامة قبل القص باستخدام أسعارك وكمياتك.'],
   kerf:['Find the fit that feels right. Generate a slotted coupon for your material.','أنشئ عينة بفتحات مختلفة لاختيار المقاس الأنسب لتعشيق الخامة.'],
-  engrave:['Prepare crisp, black-and-white images for your engraving workflow.','جهّز صوراً بالأبيض والأسود لتناسب أعمال الحفر.'],
+  engrave:['Prepare photos for CO2 and fibre engraving at the real line resolution, with material presets and eight dithering methods.','جهّز الصور للحفر بليزر CO2 والفايبر بدقة الأسطر الحقيقية، مع إعدادات جاهزة للخامات وثماني طرق تنقيط.'],
   box:['Design a finger-joint box to your size and material, ready to cut.','صمّم صندوقاً بتعشيق الأسنان بمقاسك وسماكة خامتك، جاهزاً للقص.'],
   upscale:['Enlarge a picture up to 4× with an AI model that draws in real detail, and save it with the right DPI for a large print.','كبّر الصورة حتى ٤ أضعاف بنموذج ذكاء اصطناعي يرسم تفاصيل حقيقية، واحفظها بالدقة المناسبة للطباعة الكبيرة.'],
   tiles:['Split a large print into panels your printer can take, with overlap, numbers and marks for fitting.','قسّم الطباعة الكبيرة إلى ألواح بعرض طابعتك، مع تداخل وأرقام وعلامات للتركيب.'],

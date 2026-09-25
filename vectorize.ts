@@ -673,6 +673,9 @@ function fitCubic(d: V[], first: number, last: number, t1: V, t2: V, error: numb
   fitCubic(d, split, last, mul(centre, -1), t2, error, out, depth + 1);
 }
 
+/** An index into a closed loop of `n` points, however far it has stepped past either end. */
+const cyclic = (i: number, n: number) => ((i % n) + n) % n;
+
 /** Direction from point `i` towards the points `direction` steps away,
  *  averaged over about `reach` pixels so a staircase does not tilt it. */
 function tangent(d: V[], i: number, direction: 1 | -1, reach: number, wrap: boolean): V {
@@ -681,12 +684,12 @@ function tangent(d: V[], i: number, direction: 1 | -1, reach: number, wrap: bool
   while (travelled < reach && steps < 12) {
     const next = j + direction;
     if (!wrap && (next < 0 || next >= n)) break;
-    const k = (next + n) % n;
-    travelled += len(sub(d[k], d[(j + n) % n]));
+    const k = cyclic(next, n);
+    travelled += len(sub(d[k], d[cyclic(j, n)]));
     j = next;
     steps++;
   }
-  const target = d[(j + n) % n];
+  const target = d[cyclic(j, n)];
   const t = sub(target, d[i]);
   return len(t) ? unit(t) : { x: direction, y: 0 };
 }
@@ -705,7 +708,7 @@ function findCorners(d: V[], angle: number): number[] {
   for (let i = 0; i < n; i++) {
     if (!sharp[i]) continue;
     let best = true;
-    for (let k = -4; k <= 4 && best; k++) if (k && sharp[(i + k + n) % n] > sharp[i]) best = false;
+    for (let k = -4; k <= 4 && best; k++) if (k && sharp[cyclic(i + k, n)] > sharp[i]) best = false;
     if (best && (!corners.length || i - corners[corners.length - 1] > 2)) corners.push(i);
   }
   if (corners.length > 1 && corners[0] + n - corners[corners.length - 1] <= 2) corners.pop();
@@ -717,7 +720,7 @@ function findCorners(d: V[], angle: number): number[] {
 function sharpen(d: V[], i: number): V {
   const n = d.length;
   const along = (direction: 1 | -1) => {
-    const near = d[(i + direction * 3 + n) % n], far = d[(i + direction * 8 + n) % n];
+    const near = d[cyclic(i + direction * 3, n)], far = d[cyclic(i + direction * 8, n)];
     return { origin: near, dir: unit(sub(near, far)) };
   };
   const a = along(-1), b = along(1);

@@ -17,7 +17,7 @@ export type WorkerRequest =
   | { type: 'source'; width: number; height: number; data: Uint8ClampedArray }
   | { type: 'model'; model: UpscaleModel; gpu: boolean }
   | { type: 'probe'; x: number; y: number }
-  | { type: 'run'; width: number; height: number; format: 'jpeg' | 'png'; quality: number; dpi: number; previewWidth: number };
+  | { type: 'run'; width: number; height: number; format: 'jpeg' | 'png' | 'raw'; quality: number; dpi: number; previewWidth: number };
 
 let ort: typeof Ort | null = null;
 let session: Ort.InferenceSession | null = null;
@@ -99,18 +99,21 @@ async function run(request: Extract<WorkerRequest, { type: 'run' }>) {
   const { width, height, data, alpha } = source;
   const W4 = width * FACTOR, H4 = height * FACTOR;
   const outW = request.width, outH = request.height;
-  const channels = request.format === 'png' && alpha ? 4 : 3;
+  // 'raw' hands back RGBA pixels for another tool to work on, not a file.
+  const raw = request.format === 'raw' ? new Uint8ClampedArray(outW * outH * 4) : null;
+  const channels = raw || (request.format === 'png' && alpha) ? 4 : 3;
   const jpeg = request.format === 'jpeg' ? new JpegStream(outW, outH, request.quality, request.dpi) : null;
   const png = request.format === 'png' ? new PngStream(outW, outH, channels as 3 | 4, request.dpi) : null;
 
   // Output rows are gathered into blocks before they reach the encoder.
   const stride = outW * channels, blockRows = 64;
-  let block = new Uint8Array(stride * blockRows), blockFill = 0;
+  let block = new Uint8Array(stride * blockRows), blockFill = 0, rawRows = 0;
   const pending: Promise<void>[] = [];
   const flushBlock = () => {
     if (!blockFill) return;
     const rows = block.subarray(0, blockFill * stride);
-    if (jpeg) jpeg.addRows(rows, blockFill);
+    if (raw) { raw.set(rows, rawRows * stride); rawRows += blockFill; }
+    else if (jpeg) jpeg.addRows(rows, blockFill);
     else pending.push(png!.addRows(rows.slice(), blockFill));
     block = new Uint8Array(stride * blockRows);
     blockFill = 0;
@@ -181,6 +184,10 @@ async function run(request: Extract<WorkerRequest, { type: 'run' }>) {
   previewResize.finish();
   flushBlock();
   await Promise.all(pending);
+  if (raw) {
+    post({ type: 'done', data: raw, width: outW, height: outH, seconds: (performance.now() - started) / 1000, backend }, [raw.buffer]);
+    return;
+  }
   const blob = jpeg ? jpeg.finish() : await png!.finish();
   post({ type: 'done', blob, width: outW, height: outH, seconds: (performance.now() - started) / 1000, backend });
 }

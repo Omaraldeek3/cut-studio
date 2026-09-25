@@ -5,7 +5,8 @@ import type { Raster } from './image';
 import { tx, type Language } from './copy';
 import { ErrorNote, Icon, NumberField, Range, Section, Stat, Toggle } from './ui';
 import { toDxf } from './export';
-import { defaultVectorize, pathData, type VectorizeOptions, type VectorResult } from './vectorize';
+import { defaultVectorize, MAX_COLOURS, pathData, type VectorizeOptions, type VectorResult } from './vectorize';
+import type { WorkerRequest } from './upscale.worker';
 import { colorPdf, colorSvg, outlineSvg, outputHeight, resultToDrawing } from './vector-export';
 import { decodeImage, ImageDrop, IMAGE_TYPES, saveFile, usePastedImage } from './image-input';
 
@@ -14,6 +15,10 @@ import { decodeImage, ImageDrop, IMAGE_TYPES, saveFile, usePastedImage } from '.
    and it runs in a worker so the page stays responsive while it works. */
 
 const WORKING_PIXELS = 2_500_000;
+/** Pictures up to this size are first redrawn by the AI enlarger, which gives
+ *  thin lines real width and wipes out JPEG blocks before the colours are read. */
+const AI_MAX_PIXELS = 1_000_000;
+const AI_TARGET_PIXELS = 1_200_000;
 
 /** A small flat illustration drawn in code, so the tool opens with something
  *  that shows what colour tracing does. Edges are anti-aliased by sampling
@@ -43,7 +48,8 @@ function sampleArtwork(): Raster {
 }
 
 type Source = { raster: Raster; name: string; naturalWidth: number; naturalHeight: number; scaled: boolean };
-type Job = { source: Source; key: string; result: VectorResult; elapsed: number };
+type Job = { source: Source; raster: Raster; key: string; result: VectorResult; elapsed: number };
+type Enhanced = { source: Source; raster?: Raster; failed?: boolean };
 
 function RasterCanvas({ raster, className }: { raster: Raster; className?: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -81,10 +87,20 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
   const [zoom, setZoom] = useState(1);
   const [split, setSplit] = useState(50);
   const worker = useRef<Worker | null>(null);
+  const [ai, setAi] = useState(true);
+  const [enhanced, setEnhanced] = useState<Enhanced | null>(null);
+  const [aiProgress, setAiProgress] = useState(0);
+
+  // Small pictures are traced from their AI enlargement once it is ready.
+  const aiEligible = source.name !== 'sample' && source.raster.width * source.raster.height <= AI_MAX_PIXELS;
+  const aiUsed = ai && aiEligible;
+  const aiDone = enhanced?.source === source ? enhanced : null;
+  const enhancing = aiUsed && !aiDone;
+  const traceRaster = aiUsed && aiDone?.raster ? aiDone.raster : source.raster;
 
   const key = JSON.stringify(options);
   const result = job && job.source === source ? job.result : null;
-  const stale = !job || job.source !== source || job.key !== key;
+  const stale = !job || job.source !== source || job.key !== key || job.raster !== traceRaster;
   const outline = options.mode === 'outline';
   const set = <K extends keyof VectorizeOptions>(name: K) => (value: VectorizeOptions[K]) => setOptions(o => ({ ...o, [name]: value }));
 
@@ -97,6 +113,7 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
       const decoded = await decodeImage(file, WORKING_PIXELS);
       setSource({ ...decoded, name: file.name.replace(/\.[^.]+$/, '') || 'image' });
       setOptions(o => ({ ...o, hidden: [] }));
+      setAiProgress(0);
       setView('vector');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Image import failed.');
@@ -107,9 +124,35 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
   const onPaste = useCallback((file: File) => { void load(file); }, [load]);
   usePastedImage(onPaste);
 
+  // The AI enlargement runs once per picture, in the upscaler's worker.
+  useEffect(() => {
+    if (!aiUsed || enhanced?.source === source) return;
+    const input = source, { width, height } = input.raster;
+    const factor = Math.min(4, Math.sqrt(AI_TARGET_PIXELS / (width * height)));
+    const active = new Worker(new URL('./upscale.worker.ts', import.meta.url), { type: 'module' });
+    const data = input.raster.data.slice();
+    active.onmessage = (event: MessageEvent<{ type: string; done?: number; total?: number; data?: Uint8ClampedArray; width?: number; height?: number }>) => {
+      const message = event.data;
+      if (message.type === 'progress' && message.total) setAiProgress(message.done! / message.total);
+      else if (message.type === 'done' && message.data) {
+        active.terminate();
+        setEnhanced({ source: input, raster: { width: message.width!, height: message.height!, data: message.data } });
+      } else if (message.type === 'error') {
+        active.terminate();
+        setEnhanced({ source: input, failed: true });
+      }
+    };
+    active.onerror = () => { active.terminate(); setEnhanced({ source: input, failed: true }); };
+    active.postMessage({ type: 'source', width, height, data } satisfies WorkerRequest, [data.buffer]);
+    active.postMessage({ type: 'model', model: 'graphics', gpu: true } satisfies WorkerRequest);
+    active.postMessage({ type: 'run', width: Math.round(width * factor), height: Math.round(height * factor), format: 'raw', quality: 0, dpi: 72, previewWidth: 64 } satisfies WorkerRequest);
+    return () => active.terminate();
+  }, [aiUsed, enhanced, source]);
+
   // Trace a moment after the last change, cancelling any trace still running.
   useEffect(() => {
-    const input = source, inputKey = key, inputOptions = options;
+    if (enhancing) return;
+    const input = source, raster = traceRaster, inputKey = key, inputOptions = options;
     const timer = setTimeout(() => {
       worker.current?.terminate();
       const active = new Worker(new URL('./vectorize.worker.ts', import.meta.url));
@@ -125,7 +168,7 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
         worker.current = null;
         setBusy(false);
         if (message.error) setError(message.error);
-        else if (message.result) setJob({ source: input, key: inputKey, result: message.result, elapsed: message.elapsed ?? 0 });
+        else if (message.result) setJob({ source: input, raster, key: inputKey, result: message.result, elapsed: message.elapsed ?? 0 });
       };
       active.onerror = () => {
         if (worker.current !== active) return;
@@ -134,10 +177,10 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
         setBusy(false);
         setError(tx(lang, 'Vectorizing failed. Try a smaller image or fewer colours.', 'تعذّر التحويل. جرّب صورة أصغر أو ألواناً أقل.'));
       };
-      active.postMessage({ raster: input.raster, options: inputOptions });
+      active.postMessage({ raster, options: inputOptions });
     }, 280);
     return () => clearTimeout(timer);
-  }, [source, key, options, lang]);
+  }, [source, traceRaster, enhancing, key, options, lang]);
 
   useEffect(() => () => worker.current?.terminate(), []);
 
@@ -146,7 +189,7 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
   const base = `${source.name}-${outline ? 'outline' : `${result?.layers.length ?? 0}-colours`}`;
   const validWidth = Number.isFinite(width) && width >= 1 && width <= 20000;
   // Exports wait for the trace that matches the current settings.
-  const ready = !!result && !stale && !busy && validWidth;
+  const ready = !!result && !stale && !busy && !enhancing && validWidth;
 
   const toggleColour = (color: string) =>
     setOptions(o => ({ ...o, hidden: o.hidden.includes(color) ? o.hidden.filter(c => c !== color) : [...o.hidden, color] }));
@@ -162,6 +205,12 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
         <Section title={tx(lang, 'Image', 'الصورة')} number="01">
           <ImageDrop lang={lang} onFile={file => { void load(file); }} busy={loading} note="PNG · JPEG · WebP · Ctrl+V" />
           <div className="file-chip"><span className="file-symbol">IMG</span><div><strong>{source.name === 'sample' ? tx(lang, 'Sample illustration', 'رسم تجريبي') : source.name}</strong><small dir="ltr">{source.naturalWidth} × {source.naturalHeight} px</small></div></div>
+          {aiEligible && <>
+            <Toggle label={tx(lang, 'AI clean-up before tracing', 'تحسين الصورة بالذكاء الاصطناعي أولاً')} value={ai} onChange={setAi} />
+            <p className="micro">{aiDone?.failed
+              ? tx(lang, 'The AI clean-up could not run here, so the picture is traced as it is.', 'تعذّر تشغيل التحسين هنا، فتُحوَّل الصورة كما هي.')
+              : tx(lang, 'Redraws a small or blurry picture at a larger size first: thin lines keep their shape and JPEG blocks disappear. Runs once per picture, on this device.', 'يعيد رسم الصورة الصغيرة أو الضبابية بحجم أكبر قبل التحويل، فتبقى الخطوط الرفيعة وتختفي تشوهات JPEG. يعمل مرة واحدة لكل صورة، على جهازك.')}</p>
+          </>}
           {source.scaled && <p className="micro">{tx(lang, `Traced at ${source.raster.width} × ${source.raster.height} px. Tracing at a higher resolution adds nodes, not detail; vectors enlarge without loss.`, `يُحوَّل بدقة ${source.raster.width} × ${source.raster.height} بكسل. الدقة الأعلى تضيف نقاطاً لا تفاصيل؛ الفيكتور يُكبَّر دون فقد.`)}</p>}
           {source.name !== 'sample' && <button className="text-button" onClick={() => setSource({ raster: sampleArtwork(), name: 'sample', naturalWidth: 360, naturalHeight: 260, scaled: false })}>{tx(lang, 'Use the sample illustration', 'استخدم الرسم التجريبي')}</button>}
         </Section>
@@ -176,7 +225,7 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
             </button>
           </div>
           {!outline ? <>
-            <Range label={tx(lang, 'Colours', 'عدد الألوان')} value={options.colors} min={2} max={32} onChange={set('colors')} />
+            <Range label={tx(lang, 'Colours', 'عدد الألوان')} value={options.colors} min={2} max={MAX_COLOURS} onChange={set('colors')} />
             <label className="field"><span>{tx(lang, 'Shapes', 'الأشكال')}</span>
               <select value={options.layering} onChange={e => set('layering')(e.target.value as VectorizeOptions['layering'])}>
                 <option value="stacked">{tx(lang, 'Stacked, no gaps (print)', 'متراكبة بلا فراغات (طباعة)')}</option>
@@ -210,7 +259,8 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
       <div className="canvas-column">
         <div className="canvas-toolbar">
           <span role="status" className={`status-pill ${result && !stale ? 'ready' : ''}`}><i />
-            {busy ? `${tx(lang, 'Tracing', 'جارٍ التحويل')} ${Math.round(progress * 100)}%` : result && !stale ? tx(lang, 'Vector ready', 'الفيكتور جاهز') : tx(lang, 'Updating…', 'جارٍ التحديث…')}
+            {enhancing ? `${tx(lang, 'AI clean-up', 'تحسين بالذكاء الاصطناعي')} ${Math.round(aiProgress * 100)}%`
+              : busy ? `${tx(lang, 'Tracing', 'جارٍ التحويل')} ${Math.round(progress * 100)}%` : result && !stale ? tx(lang, 'Vector ready', 'الفيكتور جاهز') : tx(lang, 'Updating…', 'جارٍ التحديث…')}
           </span>
           <div className="vz-tabs" role="tablist" aria-label={tx(lang, 'View', 'العرض')}>
             {(['vector', 'compare', 'original'] as const).map(v => (
@@ -226,7 +276,7 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
 
         <div className="preview-surface">
           <div className="preview-top"><span><Icon name="trace" size={15} /> {tx(lang, 'ARTBOARD', 'لوحة العمل')}</span><b dir="ltr">{validWidth ? `${width} × ${heightMm.toFixed(1)} mm` : '—'}</b></div>
-          <div className={`vz-stage ${busy ? 'is-busy' : ''}`}>
+          <div className={`vz-stage ${busy || enhancing ? 'is-busy' : ''}`}>
             <div className="vz-frame" style={{ '--zoom': zoom, '--ratio': source.raster.width / source.raster.height } as React.CSSProperties}>
               {(view === 'original' || view === 'compare' || !result) && <RasterCanvas raster={source.raster} className="vz-original" />}
               {result && view !== 'original' && (
@@ -268,7 +318,7 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
         </div>
         <div className="tip-card"><span className="tip-mark">i</span><p>{outline
           ? tx(lang, 'For cutting, use DXF in RDWorks or the cut-line SVG in CorelDRAW. Use “Arrange on sheet” to nest many copies.', 'للقص استخدم DXF في RDWorks أو ملف خطوط القص SVG في CorelDRAW. واستخدم «ترتيب على اللوح» لترتيب نسخ كثيرة.')
-          : tx(lang, 'Logos and cartoons trace best. For photos, raise the colours to 16–32. PDF and SVG keep real curves and open in CorelDRAW, Illustrator and RIP software at the size you set.', 'الشعارات والرسومات تتحوّل بأفضل شكل. للصور الفوتوغرافية ارفع الألوان إلى ١٦–٣٢. ملفات PDF و SVG تحفظ المنحنيات الحقيقية وتفتح في CorelDRAW و Illustrator وبرامج الطباعة بالمقاس الذي حددته.')}</p></div>
+          : tx(lang, 'Logos and cartoons trace best. For photos, raise the colours to 32–64. PDF and SVG keep real curves and open in CorelDRAW, Illustrator and RIP software at the size you set.', 'الشعارات والرسومات تتحوّل بأفضل شكل. للصور الفوتوغرافية ارفع الألوان إلى ٣٢–٦٤. ملفات PDF و SVG تحفظ المنحنيات الحقيقية وتفتح في CorelDRAW و Illustrator وبرامج الطباعة بالمقاس الذي حددته.')}</p></div>
       </div>
     </div>
 

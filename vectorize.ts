@@ -68,6 +68,7 @@ type Pt = { x: number; y: number };
 
 const TRANSPARENT = 255;
 export const MAX_PIXELS = 6_000_000;
+export const MAX_COLOURS = 64;
 
 function check(value: number, min: number, max: number, name: string) {
   if (!Number.isFinite(value) || value < min || value > max) throw new Error(`${name} must be between ${min} and ${max}.`);
@@ -130,6 +131,55 @@ function denoise(p: Pixels): Pixels {
     r[i] = Math.round(sr / count); g[i] = Math.round(sg / count); b[i] = Math.round(sb / count);
   }
   return { ...p, r, g, b };
+}
+
+/** Small pictures are enlarged before their colours are read: a line one
+ *  pixel wide cannot hold a colour of its own once its edges are blended, but
+ *  three pixels of it can. Catmull-Rom keeps the edges crisp while it enlarges. */
+export const UPSAMPLE_TARGET = 900_000;
+
+export function upsampleFactor(pixels: number) {
+  return Math.max(1, Math.min(3, Math.floor(Math.sqrt(UPSAMPLE_TARGET / pixels))));
+}
+
+function upsample(p: Pixels, f: number): Pixels {
+  const { w, h } = p, W = w * f, H = h * f;
+  // Each output column or row reads four source samples with fixed weights.
+  const taps = (size: number, count: number) => {
+    const index = new Int32Array(count * 4), weight = new Float32Array(count * 4);
+    for (let o = 0; o < count; o++) {
+      const u = (o + 0.5) / f - 0.5, base = Math.floor(u), t = u - base;
+      const wts = [
+        ((-t + 2) * t - 1) * t / 2,
+        ((3 * t - 5) * t * t + 2) / 2,
+        ((-3 * t + 4) * t + 1) * t / 2,
+        (t - 1) * t * t / 2,
+      ];
+      for (let k = 0; k < 4; k++) {
+        index[o * 4 + k] = Math.min(size - 1, Math.max(0, base - 1 + k));
+        weight[o * 4 + k] = wts[k];
+      }
+    }
+    return { index, weight };
+  };
+  const cols = taps(w, W), rows = taps(h, H);
+  const channel = (source: Uint8Array) => {
+    const temp = new Float32Array(W * h), out = new Uint8Array(W * H);
+    for (let y = 0; y < h; y++) for (let X = 0; X < W; X++) {
+      let v = 0;
+      for (let k = 0; k < 4; k++) v += cols.weight[X * 4 + k] * source[y * w + cols.index[X * 4 + k]];
+      temp[y * W + X] = v;
+    }
+    for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) {
+      let v = 0;
+      for (let k = 0; k < 4; k++) v += rows.weight[Y * 4 + k] * temp[rows.index[Y * 4 + k] * W + X];
+      out[Y * W + X] = v <= 0 ? 0 : v >= 255 ? 255 : Math.round(v);
+    }
+    return out;
+  };
+  const opaque = new Uint8Array(W * H);
+  for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) opaque[Y * W + X] = p.opaque[Math.floor(Y / f) * w + Math.floor(X / f)];
+  return { w: W, h: H, r: channel(p.r), g: channel(p.g), b: channel(p.b), opaque };
 }
 
 const linear = new Float32Array(256).map((_, i) => {
@@ -365,8 +415,10 @@ export function despeckle(labels: Uint8Array, w: number, h: number, minArea: num
  *  and skin. A region that is at most two pixels thick and whose colour lies
  *  between the two colours it separates is such a strip, and each of its
  *  pixels goes to whichever side it is closer to. A thin line with the same
- *  colour on both sides (a grey stroke on white) is a real line and stays. */
-export function removeHalos(labels: Uint8Array, w: number, h: number, centres: Float32Array, pixelLab: (i: number) => [number, number, number]) {
+ *  colour on both sides (a grey stroke on white) is a real line and stays,
+ *  unless it is a short fleck barely differing from that side, such as the
+ *  broken seam where two bands of a gradient meet. */
+export function removeHalos(labels: Uint8Array, w: number, h: number, centres: Float32Array, pixelLab: (i: number) => [number, number, number], rim = 1) {
   const n = w * h;
   const component = new Int32Array(n).fill(-1);
   const stack = new Int32Array(n);
@@ -393,7 +445,7 @@ export function removeHalos(labels: Uint8Array, w: number, h: number, centres: F
   for (let id = 0; id < members.length; id++) {
     const list = members[id], label = labels[list[0]];
     // Any pixel whose whole 3 × 3 neighbourhood shares the region means the
-    // region is thicker than a rim.
+    // region is thicker than a rim; on an enlarged picture a rim is wider.
     let thick = false;
     const contact = new Map<number, number>();
     for (const i of list) {
@@ -409,12 +461,23 @@ export function removeHalos(labels: Uint8Array, w: number, h: number, centres: F
           if (labels[j] !== TRANSPARENT) contact.set(labels[j], (contact.get(labels[j]) ?? 0) + 1);
         }
       }
+      if (inside && rim > 1) {
+        inside = x >= rim && y >= rim && x < w - rim && y < h - rim;
+        for (let dy = -rim; dy <= rim && inside; dy++) for (let dx = -rim; dx <= rim; dx++) {
+          if (component[(y + dy) * w + x + dx] !== id) { inside = false; break; }
+        }
+      }
       if (inside) { thick = true; break; }
     }
-    if (thick || contact.size < 2) continue;
+    if (thick || !contact.size) continue;
     const [a, b] = [...contact.entries()].sort((p, q) => q[1] - p[1]).map(([l]) => l);
+    if (list.length <= 32 * rim * rim && distance(a, label) < 8) {
+      for (const i of list) updates.push([i, a]);
+      continue;
+    }
+    if (b === undefined) continue;
     const span = distance(a, b);
-    if (span < 12 || distance(a, label) + distance(label, b) > span * 1.2) continue;
+    if (distance(a, label) + distance(label, b) > span * 1.2) continue;
     for (const i of list) {
       const [L, A, B] = pixelLab(i);
       const da = (L - centres[a * 3]) ** 2 + (A - centres[a * 3 + 1]) ** 2 + (B - centres[a * 3 + 2]) ** 2;
@@ -766,18 +829,23 @@ export function fitLoop(points: Pt[], error: number, cornerAngle: number): Vecto
 // ——— The whole pipeline ————————————————————————————————————————————————
 
 export function vectorize(raster: Raster, options: VectorizeOptions, progress: Progress = () => {}): VectorResult {
-  const { width: w, height: h } = raster;
-  if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1) throw new Error('Image dimensions must be positive whole numbers.');
-  if (w * h > MAX_PIXELS) throw new Error(`Images are limited to ${MAX_PIXELS.toLocaleString('en-US')} pixels.`);
-  if (raster.data.length !== w * h * 4) throw new Error('Image data must be RGBA.');
-  check(options.colors, 2, 32, 'Colours'); check(options.detail, 0, 100, 'Detail');
+  const { width, height } = raster;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) throw new Error('Image dimensions must be positive whole numbers.');
+  if (width * height > MAX_PIXELS) throw new Error(`Images are limited to ${MAX_PIXELS.toLocaleString('en-US')} pixels.`);
+  if (raster.data.length !== width * height * 4) throw new Error('Image data must be RGBA.');
+  check(options.colors, 2, MAX_COLOURS, 'Colours'); check(options.detail, 0, 100, 'Detail');
   check(options.smoothing, 0, 100, 'Smoothing'); check(options.corners, 0, 100, 'Corners');
   if (options.threshold !== -1) check(options.threshold, 0, 255, 'Threshold');
 
   progress('read', 0.02);
   let pixels = readPixels(raster, options.transparent);
   if (options.denoise) { progress('denoise', 0.05); pixels = denoise(pixels); }
-  const n = w * h;
+  // The palette is read from the picture as it is: enlarging adds blended
+  // pixels along every edge, and those would pull the colours off true.
+  const original = pixels;
+  const f = upsampleFactor(width * height);
+  if (f > 1) { progress('enlarge', 0.1); pixels = upsample(pixels, f); }
+  const { w, h } = pixels, n = w * h;
   let labels: Uint8Array;
   let colours: string[];
   let threshold = -1;
@@ -785,23 +853,25 @@ export function vectorize(raster: Raster, options: VectorizeOptions, progress: P
 
   if (options.mode === 'color') {
     progress('palette', 0.15);
-    const centres = findPalette(pixels, Math.round(options.colors));
+    const centres = findPalette(original, Math.round(options.colors));
     labels = assignColours(pixels, centres);
     const k = centres.length / 3;
     const hidden = new Set(options.hidden.map(c => c.toLowerCase()));
-    // The colour shown for each label is the average of its own pixels.
+    // The colour shown for each label is the average of its own pixels, read
+    // from the picture as it is so the enlargement's blending stays out.
+    const own = f > 1 ? assignColours(original, centres) : labels;
     const sums = new Float64Array(k * 4);
-    for (let i = 0; i < n; i++) {
-      const l = labels[i];
+    for (let i = 0; i < own.length; i++) {
+      const l = own[i];
       if (l === TRANSPARENT) continue;
-      sums[l * 4] += pixels.r[i]; sums[l * 4 + 1] += pixels.g[i]; sums[l * 4 + 2] += pixels.b[i]; sums[l * 4 + 3]++;
+      sums[l * 4] += original.r[i]; sums[l * 4 + 1] += original.g[i]; sums[l * 4 + 2] += original.b[i]; sums[l * 4 + 3]++;
     }
     colours = Array.from({ length: k }, (_, l) => (sums[l * 4 + 3] ? hex(sums[l * 4] / sums[l * 4 + 3], sums[l * 4 + 1] / sums[l * 4 + 3], sums[l * 4 + 2] / sums[l * 4 + 3]) : '#000000'));
     // Hidden colours are cut out after the clean-up, so their regions still
     // absorb specks like any other colour.
     progress('clean', 0.3);
     labels = isolate(labels, w, h);
-    labels = removeHalos(labels, w, h, centres, i => lab(pixels.r[i], pixels.g[i], pixels.b[i]));
+    labels = removeHalos(labels, w, h, centres, i => lab(pixels.r[i], pixels.g[i], pixels.b[i]), f);
     labels = despeckle(labels, w, h, speckArea(options.detail, n));
     paletteAreas = new Float64Array(k);
     for (let i = 0; i < n; i++) if (labels[i] !== TRANSPARENT) paletteAreas[labels[i]]++;
@@ -843,20 +913,57 @@ export function vectorize(raster: Raster, options: VectorizeOptions, progress: P
   const minLoop = Math.max(0.5, speckArea(options.detail, n) * 0.5);
   const stacked = options.mode === 'color' && options.layering === 'stacked';
   const mask = new Uint8Array(n);
+  const spread = stacked ? new Uint8Array(n) : mask;
   const layers: VectorLayer[] = [];
   let nodes = 0;
+  // Each colour's bounding box, so a small colour only touches its own corner.
+  const box = new Int32Array(colours.length * 4);
+  for (let l = 0; l < colours.length; l++) box.set([w, h, -1, -1], l * 4);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const l = labels[y * w + x];
+    if (l === TRANSPARENT) continue;
+    const b = l * 4;
+    if (x < box[b]) box[b] = x;
+    if (y < box[b + 1]) box[b + 1] = y;
+    if (x > box[b + 2]) box[b + 2] = x;
+    if (y > box[b + 3]) box[b + 3] = y;
+  }
+  const reach = 2;
 
   order.forEach((label, r) => {
     progress('trace', 0.35 + (0.6 * r) / order.length);
-    for (let i = 0; i < n; i++) {
-      const l = labels[i];
-      mask[i] = l === TRANSPARENT ? 0 : stacked ? (rank[l] >= r ? 1 : 0) : l === label ? 1 : 0;
+    mask.fill(0);
+    const x0 = Math.max(0, box[label * 4] - reach), y0 = Math.max(0, box[label * 4 + 1] - reach);
+    const x1 = Math.min(w - 1, box[label * 4 + 2] + reach), y1 = Math.min(h - 1, box[label * 4 + 3] + reach);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (labels[y * w + x] === label) mask[y * w + x] = 1;
+    if (stacked) {
+      // A stacked colour also reaches a little way under the colours drawn
+      // above it, so no gap can open between them. Reaching all the way
+      // under would leave many layers sharing one edge, and their smoothed
+      // edges would show through each other as a pale hairline.
+      spread.fill(0, y0 * w, (y1 + 1) * w);
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        let hit = 0;
+        for (let k = Math.max(x0, x - reach); k <= Math.min(x1, x + reach) && !hit; k++) hit = mask[y * w + k];
+        spread[y * w + x] = hit;
+      }
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const i = y * w + x, l = labels[i];
+        if (mask[i] || l === TRANSPARENT || rank[l] < r) continue;
+        for (let k = Math.max(y0, y - reach); k <= Math.min(y1, y + reach); k++) if (spread[k * w + x]) { mask[i] = 2; break; }
+      }
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (mask[y * w + x]) mask[y * w + x] = 1;
     }
     const loops = traceMask(mask, w, h, scale, sigma).filter(loop => Math.abs(polygonArea(loop)) >= minLoop);
     const paths = loops.map(loop => fitLoop(loop, error, cornerAngle)).filter(p => p.curves.length);
     nodes += paths.reduce((sum, p) => sum + p.curves.length, 0);
     if (paths.length) layers.push({ color: colours[label], area: areas[label] / n, paths });
   });
+  // Back to the picture's own pixel units.
+  if (f > 1) for (const layer of layers) for (const path of layer.paths) {
+    path.x /= f; path.y /= f;
+    for (const curve of path.curves) for (let j = 0; j < 6; j++) curve[j] /= f;
+  }
 
   // The palette lists every colour found, hidden or not, largest first, so a
   // hidden colour can be brought back from the same place it was hidden.
@@ -867,7 +974,7 @@ export function vectorize(raster: Raster, options: VectorizeOptions, progress: P
         .sort((a, b) => b.area - a.area)
     : [{ color: '#000000', area: areas[1] / n, hidden: false }];
   progress('done', 1);
-  return { width: w, height: h, layers, palette, nodes, threshold };
+  return { width, height, layers, palette, nodes, threshold };
 }
 
 /** The smallest region kept, in pixels, for a detail setting and image size. */

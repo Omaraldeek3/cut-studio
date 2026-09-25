@@ -548,22 +548,28 @@ export function exifResolution(dpi: number) {
   return [0xff, 0xe1, (length >> 8) & 255, length & 255, ...payload];
 }
 
-/** Sets the resolution in a JPEG's JFIF header (inserting one if missing), so
- *  a browser-made JPEG opens at its print size in Photoshop or a RIP. */
+/** Writes the resolution into a JPEG made by the browser: the whole-number
+ *  JFIF density, plus an EXIF block with the exact value, inserted right after
+ *  the JFIF header. A file that already carries EXIF keeps it untouched. */
 export function setJpegDpi(jpeg: Uint8Array, dpi: number): Uint8Array<ArrayBuffer> {
   const density = Math.max(1, Math.min(65535, Math.round(dpi)));
   if (jpeg[0] !== 0xff || jpeg[1] !== 0xd8) throw new Error('Not a JPEG file.');
-  if (jpeg[2] === 0xff && jpeg[3] === 0xe0 && jpeg[6] === 0x4a && jpeg[7] === 0x46 && jpeg[8] === 0x49 && jpeg[9] === 0x46) {
-    const out = new Uint8Array(jpeg);
-    out[13] = 1;
-    out[14] = density >> 8; out[15] = density & 255;
-    out[16] = density >> 8; out[17] = density & 255;
-    return out;
-  }
-  const app0 = new Uint8Array([0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 1, density >> 8, density & 255, density >> 8, density & 255, 0, 0]);
-  const out = new Uint8Array(jpeg.length + app0.length);
-  out.set(jpeg.subarray(0, 2), 0);
+  const hasJfif = jpeg[2] === 0xff && jpeg[3] === 0xe0 && jpeg[6] === 0x4a && jpeg[7] === 0x46 && jpeg[8] === 0x49 && jpeg[9] === 0x46;
+  const jfifLength = hasJfif ? 2 + ((jpeg[4] << 8) | jpeg[5]) : 0;
+  const after = 2 + jfifLength;
+  const hasExif = jpeg[after] === 0xff && jpeg[after + 1] === 0xe1;
+  const app0 = hasJfif
+    ? Uint8Array.from(jpeg.subarray(2, after))
+    : new Uint8Array([0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0]);
+  app0[11] = 1;
+  app0[12] = density >> 8; app0[13] = density & 255;
+  app0[14] = density >> 8; app0[15] = density & 255;
+  const exif = hasExif ? new Uint8Array(0) : Uint8Array.from(exifResolution(dpi));
+  const rest = jpeg.subarray(after);
+  const out = new Uint8Array(2 + app0.length + exif.length + rest.length);
+  out.set([0xff, 0xd8], 0);
   out.set(app0, 2);
-  out.set(jpeg.subarray(2), 2 + app0.length);
+  out.set(exif, 2 + app0.length);
+  out.set(rest, 2 + app0.length + exif.length);
   return out;
 }

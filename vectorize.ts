@@ -40,18 +40,26 @@ export type VectorizeOptions = {
   transparent: boolean;
   /** Colours (as #rrggbb) to leave out, as if they were transparent. */
   hidden: string[];
+  /** Colour mode, stacked: fill shaded areas with a straight gradient fitted
+   *  to their pixels, so a gradient background no longer comes out in bands. */
+  gradients: boolean;
 };
 
 export const defaultVectorize: VectorizeOptions = {
   mode: 'color', colors: 8, layering: 'stacked', denoise: true, detail: 60, smoothing: 35, corners: 50,
-  threshold: -1, invert: false, transparent: true, hidden: [],
+  threshold: -1, invert: false, transparent: true, hidden: [], gradients: false,
 };
 
 /** A cubic segment: first control, second control, end point. */
 export type Curve = [number, number, number, number, number, number];
 /** A closed path that starts at (x, y). */
 export type VectorPath = { x: number; y: number; curves: Curve[] };
-export type VectorLayer = { color: string; area: number; paths: VectorPath[] };
+/** A straight gradient from one point to another, in the result's pixel units. */
+export type Shade = { x1: number; y1: number; x2: number; y2: number; from: string; to: string };
+/** Paths of a layer (by index: one outline and its holes) filled with a
+ *  gradient instead of the layer's flat colour. */
+export type ShadedShape = { paths: number[]; shade: Shade };
+export type VectorLayer = { color: string; area: number; paths: VectorPath[]; shades?: ShadedShape[] };
 export type PaletteEntry = { color: string; area: number; hidden: boolean };
 export type VectorResult = {
   width: number;
@@ -796,7 +804,36 @@ function sharpen(d: V[], i: number): V {
 }
 
 /** Fits one closed loop with cubic curves, splitting it at its corners. */
-export function fitLoop(points: Pt[], error: number, cornerAngle: number): VectorPath {
+/** Evens out wobbles along the edge by averaging each point with its
+ *  neighbours up to `reach` away along the line. Corners stay where they are
+ *  and no average reaches past one, so a sharp point never rounds. */
+function soften(d: V[], corners: number[], reach: number): V[] {
+  const n = d.length;
+  let perimeter = 0;
+  for (let i = 0; i < n; i++) perimeter += len(sub(d[(i + 1) % n], d[i]));
+  const k = Math.min(Math.floor(n / 6), Math.round(reach / (perimeter / n)));
+  if (k < 1) return d;
+  const fixed = new Uint8Array(n);
+  for (const c of corners) fixed[c] = 1;
+  const out = d.slice();
+  for (let i = 0; i < n; i++) {
+    if (fixed[i]) continue;
+    let sx = 0, sy = 0, total = 0;
+    // Walk each way until the window ends or a corner stops it.
+    for (const step of [1, -1]) {
+      for (let j = 1; j <= k; j++) {
+        const q = d[cyclic(i + step * j, n)], weight = k + 1 - j;
+        sx += q.x * weight; sy += q.y * weight; total += weight;
+        if (fixed[cyclic(i + step * j, n)]) break;
+      }
+    }
+    const own = k + 1;
+    out[i] = { x: (sx + d[i].x * own) / (total + own), y: (sy + d[i].y * own) / (total + own) };
+  }
+  return out;
+}
+
+export function fitLoop(points: Pt[], error: number, cornerAngle: number, reach = 0): VectorPath {
   const d: V[] = [];
   for (const p of points) if (!d.length || len(sub(p, d[d.length - 1])) > 1e-6) d.push(p);
   if (d.length > 1 && len(sub(d[0], d[d.length - 1])) < 1e-6) d.pop();
@@ -804,6 +841,10 @@ export function fitLoop(points: Pt[], error: number, cornerAngle: number): Vecto
   const out: Bez[] = [];
   if (n < 3) return { x: d[0]?.x ?? 0, y: d[0]?.y ?? 0, curves: [] };
   const corners = findCorners(d, cornerAngle);
+  if (reach > 0) {
+    const smooth = soften(d, corners, reach);
+    for (let i = 0; i < n; i++) d[i] = smooth[i];
+  }
   if (!corners.length) {
     const ring = [...d, d[0]];
     const t = unit(sub(d[1], d[n - 1]));
@@ -824,6 +865,150 @@ export function fitLoop(points: Pt[], error: number, cornerAngle: number): Vecto
   }
   const start = out[0][0];
   return { x: start.x, y: start.y, curves: out.map(b => [b[1].x, b[1].y, b[2].x, b[2].y, b[3].x, b[3].y] as Curve) };
+}
+
+// ——— Gradients ——————————————————————————————————————————————————————————
+
+/** Every connected region of one colour, with the sums a least-squares plane
+ *  through its colours needs: count, position moments, colour-position
+ *  products and bounds, and the colour totals. */
+type Regions = { id: Int32Array; moments: Float64Array; colour: Float64Array };
+const M = 16;
+
+function findRegions(labels: Uint8Array, p: Pixels): Regions {
+  const { w, h } = p, n = w * h;
+  const id = new Int32Array(n).fill(-1), stack = new Int32Array(n);
+  let count = 0;
+  for (let start = 0; start < n; start++) {
+    if (id[start] >= 0 || labels[start] === TRANSPARENT) continue;
+    const label = labels[start], region = count++;
+    let top = 0;
+    stack[top++] = start; id[start] = region;
+    while (top) {
+      const i = stack[--top], x = i % w;
+      if (x > 0 && id[i - 1] < 0 && labels[i - 1] === label) { id[i - 1] = region; stack[top++] = i - 1; }
+      if (x < w - 1 && id[i + 1] < 0 && labels[i + 1] === label) { id[i + 1] = region; stack[top++] = i + 1; }
+      if (i >= w && id[i - w] < 0 && labels[i - w] === label) { id[i - w] = region; stack[top++] = i - w; }
+      if (i < n - w && id[i + w] < 0 && labels[i + w] === label) { id[i + w] = region; stack[top++] = i + w; }
+    }
+  }
+  const moments = new Float64Array(count * M), colour = new Float64Array(count * 3);
+  for (let r = 0; r < count; r++) moments.set([Infinity, Infinity, -Infinity, -Infinity], r * M + 12);
+  for (let i = 0; i < n; i++) {
+    const r = id[i];
+    if (r < 0) continue;
+    const o = r * M, px = i % w, py = (i - px) / w, x = px + 0.5, y = py + 0.5;
+    const c = [p.r[i], p.g[i], p.b[i]];
+    moments[o] += 1; moments[o + 1] += x; moments[o + 2] += y;
+    moments[o + 3] += x * x; moments[o + 4] += x * y; moments[o + 5] += y * y;
+    for (let k = 0; k < 3; k++) { moments[o + 6 + k * 2] += c[k] * x; moments[o + 7 + k * 2] += c[k] * y; colour[r * 3 + k] += c[k]; }
+    if (x < moments[o + 12]) moments[o + 12] = x;
+    if (y < moments[o + 13]) moments[o + 13] = y;
+    if (x > moments[o + 14]) moments[o + 14] = x;
+    if (y > moments[o + 15]) moments[o + 15] = y;
+  }
+  return { id, moments, colour };
+}
+
+/** The straight gradient that best fits a region's pixels. A region too small
+ *  or too even for a gradient keeps its own average colour when that differs
+ *  from the colour's overall one, so a sliver of a gradient band matches the
+ *  band beside it; otherwise null, and it takes the layer's flat colour. */
+function fitShade(regions: Regions, region: number, layerColour: string): Shade | null {
+  const s = regions.moments, o = region * M, count = s[o];
+  if (!count) return null;
+  const mx = s[o + 1] / count, my = s[o + 2] / count;
+  const mean = [0, 1, 2].map(k => regions.colour[region * 3 + k] / count);
+  const even = () => {
+    const own = [1, 3, 5].map(i => parseInt(layerColour.slice(i, i + 2), 16));
+    if (Math.max(...own.map((v, k) => Math.abs(v - mean[k]))) < 3) return null;
+    const colour = hex(mean[0], mean[1], mean[2]);
+    return { x1: mx, y1: my, x2: mx + 1, y2: my, from: colour, to: colour };
+  };
+  if (count < 64) return even();
+  const sxx = s[o + 3] / count - mx * mx, sxy = s[o + 4] / count - mx * my, syy = s[o + 5] / count - my * my;
+  const det = sxx * syy - sxy * sxy;
+  if (det < 1e-6) return even();
+  // Each channel's slope along x and y, from its covariance with position.
+  const slope = mean.map((m, k) => {
+    const cx = s[o + 6 + k * 2] / count - m * mx, cy = s[o + 7 + k * 2] / count - m * my;
+    return [(cx * syy - cy * sxy) / det, (cy * sxx - cx * sxy) / det];
+  });
+  // The gradient runs the way the lightness changes fastest.
+  const gx = 0.3 * slope[0][0] + 0.59 * slope[1][0] + 0.11 * slope[2][0];
+  const gy = 0.3 * slope[0][1] + 0.59 * slope[1][1] + 0.11 * slope[2][1];
+  const g = Math.hypot(gx, gy);
+  if (g < 1e-4) return even();
+  const ux = gx / g, uy = gy / g;
+  let t0 = Infinity, t1 = -Infinity;
+  for (const x of [s[o + 12] - 0.5, s[o + 14] + 0.5]) for (const y of [s[o + 13] - 0.5, s[o + 15] + 0.5]) {
+    const t = (x - mx) * ux + (y - my) * uy;
+    t0 = Math.min(t0, t); t1 = Math.max(t1, t);
+  }
+  const along = slope.map(([sx, sy]) => sx * ux + sy * uy);
+  if (Math.max(...along.map(a => Math.abs(a * (t1 - t0)))) < 6) return even();
+  const at = (t: number) => {
+    const [r, gg, b] = mean.map((m, k) => Math.max(0, Math.min(255, m + along[k] * t)));
+    return hex(r, gg, b);
+  };
+  return { x1: mx + ux * t0, y1: my + uy * t0, x2: mx + ux * t1, y2: my + uy * t1, from: at(t0), to: at(t1) };
+}
+
+function inside(loop: Pt[], x: number, y: number) {
+  let hit = false;
+  for (let i = 0, j = loop.length - 1; i < loop.length; j = i++) {
+    const a = loop[i], b = loop[j];
+    if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
+  }
+  return hit;
+}
+
+/** Groups a layer's loops into outlines with their holes, and gives each
+ *  outline the gradient of the region of its colour it was traced around. */
+function shadeLoops(loops: Pt[][], label: number, colour: string, labels: Uint8Array, w: number, h: number, regions: Regions): ShadedShape[] {
+  if (!loops.length) return [];
+  const areas = loops.map(polygonArea);
+  let largest = 0;
+  for (let i = 1; i < loops.length; i++) if (Math.abs(areas[i]) > Math.abs(areas[largest])) largest = i;
+  // The largest loop is always an outline, so its turning sense marks outlines.
+  const outerSign = Math.sign(areas[largest]);
+  const bounds = loops.map(loop => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of loop) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
+    return [x0, y0, x1, y1];
+  });
+  const shapes = new Map<number, number[]>();
+  loops.forEach((_, i) => { if (Math.sign(areas[i]) === outerSign) shapes.set(i, [i]); });
+  loops.forEach((loop, i) => {
+    if (Math.sign(areas[i]) === outerSign) return;
+    const { x, y } = loop[0];
+    let owner = -1;
+    for (const o of shapes.keys()) {
+      const [x0, y0, x1, y1] = bounds[o];
+      if (x < x0 || x > x1 || y < y0 || y > y1 || !inside(loops[o], x, y)) continue;
+      if (owner < 0 || Math.abs(areas[o]) < Math.abs(areas[owner])) owner = o;
+    }
+    if (owner >= 0) shapes.get(owner)!.push(i);
+  });
+  const result: ShadedShape[] = [];
+  for (const [outer, members] of shapes) {
+    const votes = new Map<number, number>(), loop = loops[outer];
+    const step = Math.max(1, Math.floor(loop.length / 64));
+    for (let k = 0; k < loop.length; k += step) {
+      const px = Math.floor(loop[k].x), py = Math.floor(loop[k].y);
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const x = px + dx, y = py + dy;
+        if (x < 0 || y < 0 || x >= w || y >= h || labels[y * w + x] !== label) continue;
+        const r = regions.id[y * w + x];
+        votes.set(r, (votes.get(r) ?? 0) + 1);
+      }
+    }
+    let region = -1, best = 0;
+    for (const [r, v] of votes) if (v > best) { best = v; region = r; }
+    const shade = region >= 0 ? fitShade(regions, region, colour) : null;
+    if (shade) result.push({ paths: members, shade });
+  }
+  return result;
 }
 
 // ——— The whole pipeline ————————————————————————————————————————————————
@@ -907,8 +1092,14 @@ export function vectorize(raster: Raster, options: VectorizeOptions, progress: P
   // Tracing on a finer grid than the pixels places edges more precisely; the
   // grid is chosen so the whole job stays around the same amount of work.
   const scale = Math.max(1, Math.min(3, Math.floor(Math.sqrt(3_500_000 / n / Math.max(1, order.length / 6)))));
-  const sigma = 0.45 + (options.smoothing / 100) * 0.35;
-  const error = 0.4 + (options.smoothing / 100) * 1.6;
+  // Smoothing is measured against the picture's size, so the slider does the
+  // same to a small logo and to its enlargement. It evens out the traced edge
+  // itself rather than blurring the colours, which would thin out lines.
+  const unit = Math.max(1, Math.sqrt(n / 400_000));
+  const t = options.smoothing / 100;
+  const sigma = 0.45 + t * 0.35;
+  const error = (0.4 + 1.6 * t) * unit;
+  const ease = t * t * 5 * unit;
   const cornerAngle = 110 - options.corners * 0.8;
   const minLoop = Math.max(0.5, speckArea(options.detail, n) * 0.5);
   const stacked = options.mode === 'color' && options.layering === 'stacked';
@@ -928,7 +1119,10 @@ export function vectorize(raster: Raster, options: VectorizeOptions, progress: P
     if (x > box[b + 2]) box[b + 2] = x;
     if (y > box[b + 3]) box[b + 3] = y;
   }
-  const reach = 2;
+  // Curve fitting and smoothing may each move an edge a little; the reach
+  // under the colour above must be wider than both, or a gap could open.
+  const reach = Math.ceil(2 + error + ease / 2);
+  const regions = stacked && options.gradients ? findRegions(labels, pixels) : null;
 
   order.forEach((label, r) => {
     progress('trace', 0.35 + (0.6 * r) / order.length);
@@ -954,15 +1148,27 @@ export function vectorize(raster: Raster, options: VectorizeOptions, progress: P
       }
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (mask[y * w + x]) mask[y * w + x] = 1;
     }
-    const loops = traceMask(mask, w, h, scale, sigma).filter(loop => Math.abs(polygonArea(loop)) >= minLoop);
-    const paths = loops.map(loop => fitLoop(loop, error, cornerAngle)).filter(p => p.curves.length);
+    const fitted = traceMask(mask, w, h, scale, sigma)
+      .filter(loop => Math.abs(polygonArea(loop)) >= minLoop)
+      .map(loop => ({ loop, path: fitLoop(loop, error, cornerAngle, ease) }))
+      .filter(item => item.path.curves.length);
+    if (!fitted.length) return;
+    const paths = fitted.map(item => item.path);
     nodes += paths.reduce((sum, p) => sum + p.curves.length, 0);
-    if (paths.length) layers.push({ color: colours[label], area: areas[label] / n, paths });
+    const layer: VectorLayer = { color: colours[label], area: areas[label] / n, paths };
+    if (regions) {
+      const shades = shadeLoops(fitted.map(item => item.loop), label, colours[label], labels, w, h, regions);
+      if (shades.length) layer.shades = shades;
+    }
+    layers.push(layer);
   });
   // Back to the picture's own pixel units.
-  if (f > 1) for (const layer of layers) for (const path of layer.paths) {
-    path.x /= f; path.y /= f;
-    for (const curve of path.curves) for (let j = 0; j < 6; j++) curve[j] /= f;
+  if (f > 1) for (const layer of layers) {
+    for (const path of layer.paths) {
+      path.x /= f; path.y /= f;
+      for (const curve of path.curves) for (let j = 0; j < 6; j++) curve[j] /= f;
+    }
+    for (const { shade } of layer.shades ?? []) { shade.x1 /= f; shade.y1 /= f; shade.x2 /= f; shade.y2 /= f; }
   }
 
   // The palette lists every colour found, hidden or not, largest first, so a

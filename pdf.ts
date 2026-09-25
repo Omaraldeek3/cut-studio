@@ -15,6 +15,9 @@ export type PdfPage = {
   images?: PdfImage[];
   /** Referenced from the content as /Spot, e.g. "/Spot CS 1 SCN". */
   spot?: PdfSpot;
+  /** Shading dictionaries, each written as "/Name << ... >>" and painted
+   *  from the content with "/Name sh". */
+  shadings?: string[];
   title?: string;
 };
 
@@ -53,6 +56,7 @@ export function buildPdf(page: PdfPage): Uint8Array<ArrayBuffer> {
     const resources = [
       images.length ? `/XObject << ${xobjects} >>` : '',
       page.spot ? `/ColorSpace << /Spot ${spotId} 0 R >>` : '',
+      page.shadings?.length ? `/Shading << ${page.shadings.join(' ')} >>` : '',
     ].join(' ');
     write(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(page.width)} ${num(page.height)}] /Contents 4 0 R /Resources << ${resources} >> >>`);
   });

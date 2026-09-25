@@ -7,7 +7,7 @@ import { ErrorNote, Icon, NumberField, Range, Section, Stat, Toggle } from './ui
 import { toDxf } from './export';
 import { defaultVectorize, MAX_COLOURS, pathData, type VectorizeOptions, type VectorResult } from './vectorize';
 import type { WorkerRequest } from './upscale.worker';
-import { colorPdf, colorSvg, outlineSvg, outputHeight, resultToDrawing } from './vector-export';
+import { colorPdf, colorSvg, layerParts, outlineSvg, outputHeight, resultToDrawing } from './vector-export';
 import { decodeImage, ImageDrop, IMAGE_TYPES, saveFile, usePastedImage } from './image-input';
 
 /* The image-to-vector tool. It re-traces on its own a moment after any
@@ -67,9 +67,18 @@ function VectorArt({ result, outline }: { result: VectorResult; outline: boolean
   return (
     <svg className="vz-art" viewBox={`0 0 ${result.width} ${result.height}`} role="img" aria-label="Traced vector">
       {outline && <rect width={result.width} height={result.height} fill="#fff" />}
-      {result.layers.map((layer, i) => (
-        <path key={i} fill={layer.color} fillRule="evenodd" d={layer.paths.map(p => pathData(p)).join('')} />
-      ))}
+      {result.layers.map((layer, i) => {
+        const { flat, shaded } = layerParts(layer);
+        return <g key={i}>
+          {flat.length > 0 && <path fill={layer.color} fillRule="evenodd" d={flat.map(p => pathData(p)).join('')} />}
+          {shaded.map(({ paths, shade }, j) => <g key={j}>
+            <linearGradient id={`vz-shade-${i}-${j}`} x1={shade.x1} y1={shade.y1} x2={shade.x2} y2={shade.y2} gradientUnits="userSpaceOnUse">
+              <stop offset="0" stopColor={shade.from} /><stop offset="1" stopColor={shade.to} />
+            </linearGradient>
+            <path fill={`url(#vz-shade-${i}-${j})`} fillRule="evenodd" d={paths.map(p => pathData(p)).join('')} />
+          </g>)}
+        </g>;
+      })}
     </svg>
   );
 }
@@ -233,6 +242,10 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
               </select>
             </label>
             <Toggle label={tx(lang, 'Clean JPEG noise', 'تنظيف تشويش JPEG')} value={options.denoise} onChange={set('denoise')} />
+            {options.layering === 'stacked' && <>
+              <Toggle label={tx(lang, 'Smooth gradients', 'تدرجات ناعمة')} value={options.gradients} onChange={set('gradients')} />
+              <p className="micro">{tx(lang, 'Fills shaded areas, such as a gradient background, with real gradients instead of bands. For print; vinyl needs flat colours.', 'يملأ المناطق المتدرجة، مثل الخلفية، بتدرج حقيقي بدل الشرائح. للطباعة؛ الفينيل يحتاج ألواناً مسطحة.')}</p>
+            </>}
           </> : <>
             <Toggle label={tx(lang, 'Automatic threshold', 'عتبة تلقائية')} value={options.threshold === -1} onChange={auto => set('threshold')(auto ? -1 : (result?.threshold ?? 128))} />
             {options.threshold !== -1 && <Range label={tx(lang, 'Threshold', 'العتبة')} value={options.threshold} min={1} max={254} onChange={set('threshold')} />}

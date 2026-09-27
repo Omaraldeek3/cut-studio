@@ -147,9 +147,14 @@ function outlinesCollide(a:Outline,dx:number,dy:number,b:Outline,gap:number){
 }
 const empty:Outline={rings:[],box:{x:Infinity,y:Infinity,width:0,height:0}};
 type Placement={kind:number;angle:number;x:number;y:number;id:string;name:string;outline:Outline;box:Bounds};
-export function nest(shapes:Shape[],o:NestOptions):NestResult {
-  const start=Date.now(); finite(o.width,1,3000,'Sheet width');finite(o.height,1,3000,'Sheet height');finite(o.margin,0,100,'Margin');finite(o.gap,0,100,'Spacing');finite(o.copies,1,100,'Copies');
-  if(!Number.isInteger(o.copies)||!shapes.length||shapes.length*o.copies>MAX_NEST_PIECES)throw new Error(`Use 1–${MAX_NEST_PIECES} total parts and whole-number copies.`);
+export function nest(allShapes:Shape[],o:NestOptions):NestResult {
+  const start=Date.now(); finite(o.width,1,3000,'Sheet width');finite(o.height,1,3000,'Sheet height');finite(o.margin,0,100,'Margin');finite(o.gap,0,100,'Spacing');
+  const allCounts=o.counts??allShapes.map(()=>o.copies);
+  if(allCounts.length!==allShapes.length)throw new Error('Give one quantity for every part.');
+  allCounts.forEach(c=>{finite(c,0,100,'Quantity');if(!Number.isInteger(c))throw new Error('Quantities must be whole numbers.');});
+  // A part with a quantity of 0 is left out of the job altogether.
+  const shapes=allShapes.filter((_,i)=>allCounts[i]>0),counts=allCounts.filter(c=>c>0),pieces=counts.reduce((a,b)=>a+b,0);
+  if(!pieces||pieces>MAX_NEST_PIECES)throw new Error(`Use 1–${MAX_NEST_PIECES} total parts.`);
   // Dense artwork is nested with simplified outer outlines. The simplification
   // tolerance is added to both sides of every gap, so the full-detail parts
   // placed from these outlines still keep the requested spacing.
@@ -173,7 +178,7 @@ export function nest(shapes:Shape[],o:NestOptions):NestResult {
     }).filter(v=>v.width<=o.width-2*margin&&v.height<=o.height-2*margin);
     return {shape,area:shapeArea(shape),variants};
   });
-  const instances=shapes.flatMap((s,kind)=>Array.from({length:o.copies},(_,i)=>({kind,id:`${s.id}-${i}`,name:s.name})));
+  const instances=shapes.flatMap((s,kind)=>Array.from({length:counts[kind]},(_,i)=>({kind,id:`${s.id}-${i}`,name:s.name})));
   function pack(order:typeof instances){
     // Sheets only ever gain parts, so a part kind that did not fit a sheet never will.
     const sheets:Placement[][]=[],full:Set<number>[]=[],unplaced:string[]=[];let area=0;

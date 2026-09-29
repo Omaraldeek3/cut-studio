@@ -7,7 +7,7 @@ import { ErrorNote, Icon, NumberField, Range, Section, Stat, Toggle } from './ui
 import { toDxf } from './export';
 import { defaultVectorize, MAX_COLOURS, pathData, type VectorizeOptions, type VectorResult } from './vectorize';
 import type { WorkerRequest } from './upscale.worker';
-import { colorPdf, colorSvg, layerParts, outlineSvg, outputHeight, resultToDrawing } from './vector-export';
+import { colorPdf, colorSvg, cutDrawing, layerParts, outlineSvg, outputHeight, resultToDrawing } from './vector-export';
 import { decodeImage, ImageDrop, IMAGE_TYPES, saveFile, usePastedImage } from './image-input';
 
 /* The image-to-vector tool. It re-traces on its own a moment after any
@@ -242,6 +242,10 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
               </select>
             </label>
             <Toggle label={tx(lang, 'Clean JPEG noise', 'تنظيف تشويش JPEG')} value={options.denoise} onChange={set('denoise')} />
+            {options.layering === 'cutout' && <>
+              <Toggle label={tx(lang, 'Remove the background', 'احذف الخلفية')} value={options.removeBackground} onChange={set('removeBackground')} />
+              <p className="micro">{tx(lang, 'Every border between two colours is traced once, so the cut lines and DXF never cut the same line twice.', 'كل حدّ بين لونين يُتتبّع مرة واحدة، فلا تقصّ خطوط القص ولا ملف DXF الخط نفسه مرتين.')}</p>
+            </>}
             {options.layering === 'stacked' && <>
               <Toggle label={tx(lang, 'Smooth gradients', 'تدرجات ناعمة')} value={options.gradients} onChange={set('gradients')} />
               <p className="micro">{tx(lang, 'Fills shaded areas, such as a gradient background, with real gradients instead of bands. For print; vinyl needs flat colours.', 'يملأ المناطق المتدرجة، مثل الخلفية، بتدرج حقيقي بدل الشرائح. للطباعة؛ الفينيل يحتاج ألواناً مسطحة.')}</p>
@@ -340,7 +344,7 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
       <div className="export-actions">
         <button className="text-button" disabled={!ready} onClick={() => { if (drawing) onNest(drawing); }}>{tx(lang, 'Arrange on sheet', 'ترتيب على اللوح')} ↗</button>
         <button className="button secondary" disabled={!ready} onClick={() => result && saveFile(outlineSvg(result, width), `${base}-cut-lines.svg`, 'image/svg+xml')}><Icon name="download" size={16} />{tx(lang, 'Cut lines SVG', 'خطوط قص SVG')}</button>
-        <button className="button secondary" disabled={!ready} onClick={() => drawing && saveFile(toDxf(drawing), `${base}.dxf`, 'application/dxf')}><Icon name="download" size={16} />DXF</button>
+        <button className="button secondary" disabled={!ready} onClick={() => result && saveFile(toDxf(cutDrawing(result, width)), `${base}.dxf`, 'application/dxf')}><Icon name="download" size={16} />DXF</button>
         <button className="button secondary" disabled={!ready} onClick={() => result && saveFile(colorPdf(result, width), `${base}.pdf`, 'application/pdf')}><Icon name="download" size={16} />PDF</button>
         <button className="button dark" disabled={!ready} onClick={() => result && saveFile(colorSvg(result, width), `${base}.svg`, 'image/svg+xml')}><Icon name="download" size={16} />{tx(lang, 'Export SVG', 'تصدير SVG')}</button>
       </div>

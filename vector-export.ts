@@ -1,6 +1,6 @@
 import type { Drawing, Shape } from './types';
 import type { Curve, Seg } from './path';
-import { flatten, pathData, type Shade, type VectorLayer, type VectorPath, type VectorResult } from './vectorize';
+import { flatten, pathData, type Shade, type VectorEdge, type VectorLayer, type VectorPath, type VectorResult } from './vectorize';
 import { buildPdf, mmToPt, pdfNumber, pdfPath } from './pdf';
 
 /* Turning a traced result into the files the workshop opens: a colour SVG or
@@ -45,14 +45,28 @@ export function colorSvg(result: VectorResult, widthMm: number) {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(widthMm)}mm" height="${fmt(heightMm)}mm" viewBox="0 0 ${result.width} ${result.height}">\n${head}${groups.join('\n')}\n</svg>\n`;
 }
 
+/** SVG path data of a traced border, closed or open. */
+function edgeData(e: VectorEdge) {
+  const d = pathData(e);
+  return e.closed ? d : d.slice(0, -1);
+}
+
+const strokeOf = (color: string) => (color === '#ffffff' || color === '#fffefe' ? '#ff0000' : color);
+
 /** Hairline outlines only, one group per colour, for a vinyl plotter or a
- *  laser: every shape becomes a cut path in the colour it came from. */
+ *  laser: every shape becomes a cut path in the colour it came from. In
+ *  cut-out mode each border between two colours is written once, in the
+ *  colour of one of its sides, so nothing is cut twice. */
 export function outlineSvg(result: VectorResult, widthMm: number) {
   const heightMm = outputHeight(result, widthMm);
   const hairline = (0.1 * result.width) / widthMm;
-  const groups = result.layers.map((layer, i) =>
-    `  <g id="cut-${i + 1}" fill="none" stroke="${layer.color === '#ffffff' || layer.color === '#fffefe' ? '#ff0000' : layer.color}" stroke-width="${fmt(hairline)}">\n    <path d="${layer.paths.map(p => pathData(p)).join('')}"/>\n  </g>`,
-  );
+  const byColour = new Map<string, VectorEdge[]>();
+  for (const e of result.edges ?? []) { const c = e.colors[0] ?? '#000000'; byColour.set(c, [...(byColour.get(c) ?? []), e]); }
+  const group = (i: number, color: string, d: string) =>
+    `  <g id="cut-${i + 1}" fill="none" stroke="${strokeOf(color)}" stroke-width="${fmt(hairline)}">\n    <path d="${d}"/>\n  </g>`;
+  const groups = result.edges
+    ? [...byColour].map(([color, edges], i) => group(i, color, edges.map(edgeData).join('')))
+    : result.layers.map((layer, i) => group(i, layer.color, layer.paths.map(p => pathData(p)).join('')));
   return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(widthMm)}mm" height="${fmt(heightMm)}mm" viewBox="0 0 ${result.width} ${result.height}">\n${groups.join('\n')}\n</svg>\n`;
 }
 
@@ -114,4 +128,18 @@ export function resultToDrawing(result: VectorResult, widthMm: number): Drawing 
     })),
   }));
   return { width: widthMm, height: outputHeight(result, widthMm), shapes };
+}
+
+/** Cut-out mode's cut lines as one Drawing, each border once: the file for
+ *  cutting the whole picture from one sheet, and its DXF. A border that
+ *  leaves a junction and comes back to it is a closed loop. */
+export function cutDrawing(result: VectorResult, widthMm: number): Drawing {
+  if (!result.edges) return resultToDrawing(result, widthMm);
+  const k = widthMm / result.width;
+  const contours = result.edges.map(e => {
+    const end = e.curves.length ? e.curves[e.curves.length - 1] : null;
+    const closed = e.closed || (!!end && Math.hypot(end[4] - e.x, end[5] - e.y) < 1e-9);
+    return { closed, points: flatten(e, 0.02 / k).map(p => ({ x: p.x * k, y: p.y * k })), curve: pathCurve(e, k) };
+  }).filter(c => c.points.length > 1);
+  return { width: widthMm, height: outputHeight(result, widthMm), shapes: [{ id: 'cut-lines', name: 'Cut lines', contours }] };
 }

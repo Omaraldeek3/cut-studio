@@ -1,5 +1,6 @@
 import type { Raster } from './image';
 import { arcToCubics } from './path';
+import { regionLoops, traceEdges } from './edges';
 
 /* Image to vector, in two modes.
 
@@ -44,11 +45,14 @@ export type VectorizeOptions = {
   /** Colour mode, stacked: fill shaded areas with a straight gradient fitted
    *  to their pixels, so a gradient background no longer comes out in bands. */
   gradients: boolean;
+  /** Cut-out mode: leave out the colour that fills most of the picture's
+   *  border, so the plotter or laser does not cut round the whole page. */
+  removeBackground: boolean;
 };
 
 export const defaultVectorize: VectorizeOptions = {
   mode: 'color', colors: 8, layering: 'stacked', denoise: true, detail: 60, smoothing: 35, corners: 50,
-  threshold: -1, invert: false, transparent: true, hidden: [], gradients: false,
+  threshold: -1, invert: false, transparent: true, hidden: [], gradients: false, removeBackground: true,
 };
 
 /** A cubic segment: first control, second control, end point. */
@@ -70,7 +74,13 @@ export type VectorResult = {
   nodes: number;
   /** The grey level outline mode used, useful when it was chosen automatically. */
   threshold: number;
+  /** Cut-out mode: every border once, with the colours on either side. */
+  edges?: VectorEdge[];
 };
+
+/** A border between colours, traced once. `colors` lists the one or two
+ *  colours it bounds (outside and removed background are left out). */
+export type VectorEdge = VectorPath & { closed: boolean; colors: string[] };
 
 type Progress = (stage: string, fraction: number) => void;
 type Pt = { x: number; y: number };
@@ -655,7 +665,7 @@ export function traceMask(mask: Uint8Array, w: number, h: number, scale: number,
 
 // ——— Curve fitting ————————————————————————————————————————————————————
 
-type V = { x: number; y: number };
+export type V = { x: number; y: number };
 const sub = (a: V, b: V): V => ({ x: a.x - b.x, y: a.y - b.y });
 const add = (a: V, b: V): V => ({ x: a.x + b.x, y: a.y + b.y });
 const mul = (a: V, s: number): V => ({ x: a.x * s, y: a.y * s });
@@ -663,7 +673,7 @@ const dot = (a: V, b: V) => a.x * b.x + a.y * b.y;
 const len = (a: V) => Math.hypot(a.x, a.y);
 const unit = (a: V): V => { const l = len(a) || 1; return { x: a.x / l, y: a.y / l }; };
 
-type Bez = [V, V, V, V];
+export type Bez = [V, V, V, V];
 
 function bezierAt(b: Bez, t: number): V {
   const mt = 1 - t, a = mt * mt * mt, c = 3 * mt * mt * t, d = 3 * mt * t * t, e = t * t * t;
@@ -720,7 +730,7 @@ function reparameterise(d: V[], first: number, b: Bez, u: number[]) {
   });
 }
 
-function fitCubic(d: V[], first: number, last: number, t1: V, t2: V, error: number, out: Bez[], depth = 0) {
+export function fitCubic(d: V[], first: number, last: number, t1: V, t2: V, error: number, out: Bez[], depth = 0) {
   if (last - first === 1 || depth > 24) {
     const distance = len(sub(d[last], d[first])) / 3;
     out.push([d[first], add(d[first], mul(t1, distance)), add(d[last], mul(t2, distance)), d[last]]);
@@ -750,7 +760,7 @@ const cyclic = (i: number, n: number) => ((i % n) + n) % n;
 
 /** Direction from point `i` towards the points `direction` steps away,
  *  averaged over about `reach` pixels so a staircase does not tilt it. */
-function tangent(d: V[], i: number, direction: 1 | -1, reach: number, wrap: boolean): V {
+export function tangent(d: V[], i: number, direction: 1 | -1, reach: number, wrap: boolean): V {
   const n = d.length;
   let j = i, travelled = 0, steps = 0;
   while (travelled < reach && steps < 12) {
@@ -1162,7 +1172,31 @@ export function vectorize(raster: Raster, options: VectorizeOptions, progress: P
   const reach = Math.ceil(2 + error + ease / 2);
   const regions = stacked && options.gradients ? findRegions(labels, pixels) : null;
 
-  order.forEach((label, r) => {
+  const cutout = options.mode === 'color' && options.layering === 'cutout';
+  let edges: VectorEdge[] | undefined;
+  if (cutout) {
+    progress('trace', 0.4);
+    let background = -1;
+    if (options.removeBackground) {
+      const border = new Float64Array(colours.length);
+      let total = 0;
+      const count = (i: number) => { total++; if (labels[i] !== TRANSPARENT) border[labels[i]]++; };
+      for (let x = 0; x < w; x++) { count(x); count((h - 1) * w + x); }
+      for (let y = 1; y < h - 1; y++) { count(y * w); count(y * w + w - 1); }
+      for (let l = 0; l < colours.length; l++) if (border[l] > total / 2) background = l;
+    }
+    const traced = traceEdges(labels, w, h, l => l === TRANSPARENT || l === background, { error, cornerAngle, reach: ease, minLoop });
+    for (const label of order) {
+      if (label === background) continue;
+      const paths = regionLoops(traced, label);
+      if (!paths.length) continue;
+      nodes += paths.reduce((sum, p) => sum + p.curves.length, 0);
+      layers.push({ color: colours[label], area: areas[label] / n, paths });
+    }
+    edges = traced.map(e => ({ x: e.x, y: e.y, curves: e.curves.map(c => [...c] as Curve), closed: e.closed, colors: [e.left, e.right].filter(l => l >= 0).map(l => colours[l]) }));
+  }
+
+  if (!cutout) order.forEach((label, r) => {
     progress('trace', 0.35 + (0.6 * r) / order.length);
     mask.fill(0);
     const x0 = Math.max(0, box[label * 4] - reach), y0 = Math.max(0, box[label * 4 + 1] - reach);
@@ -1201,6 +1235,10 @@ export function vectorize(raster: Raster, options: VectorizeOptions, progress: P
     layers.push(layer);
   });
   // Back to the picture's own pixel units.
+  if (f > 1) for (const path of edges ?? []) {
+    path.x /= f; path.y /= f;
+    for (const curve of path.curves) for (let j = 0; j < 6; j++) curve[j] /= f;
+  }
   if (f > 1) for (const layer of layers) {
     for (const path of layer.paths) {
       path.x /= f; path.y /= f;
@@ -1218,7 +1256,7 @@ export function vectorize(raster: Raster, options: VectorizeOptions, progress: P
         .sort((a, b) => b.area - a.area)
     : [{ color: '#000000', area: areas[1] / n, hidden: false }];
   progress('done', 1);
-  return { width, height, layers, palette, nodes, threshold };
+  return { width, height, layers, palette, nodes, threshold, ...(edges ? { edges } : {}) };
 }
 
 /** The smallest region kept, in pixels, for a detail setting and image size. */

@@ -1,4 +1,5 @@
 import type { Bounds, Contour, Drawing, NestOptions, NestResult, Point, Shape } from './types';
+import { mapCurve } from './path';
 
 export const TOLERANCE = 0.1;
 export function finite(value: number, min: number, max: number, name: string) {
@@ -12,7 +13,7 @@ export function bounds(shape: Shape): Bounds {
   return {x,y,width:right-x,height:bottom-y};
 }
 export function mapShape(shape: Shape, fn: (p: Point)=>Point): Shape {
-  return {...shape,contours:shape.contours.map(c=>({...c,points:c.points.map(fn)}))};
+  return {...shape,contours:shape.contours.map(c=>({...c,points:c.points.map(fn),...(c.curve?{curve:mapCurve(c.curve,fn)}:{})}))};
 }
 export function moveShape(shape:Shape,x:number,y:number){return mapShape(shape,p=>({x:p.x+x,y:p.y+y}));}
 export function normalize(shape:Shape,angle=0){

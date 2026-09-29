@@ -1,6 +1,8 @@
+import type { Curve } from './path';
 export type Point = { x: number; y: number };
-/** layer 'engrave' marks marking strokes (labels); everything else is cut. */
-export type Contour = { points: Point[]; closed: boolean; layer?: 'engrave' };
+/** layer 'engrave' marks marking strokes (labels); everything else is cut.
+ *  curve, when present, is the exact outline; points is its 0.05 mm flattening. */
+export type Contour = { points: Point[]; closed: boolean; layer?: 'engrave'; curve?: Curve };
 export type Shape = { id: string; name: string; contours: Contour[] };
 /** skippedText counts live text objects left out because they are not cutting outlines. */
 export type Drawing = { width: number; height: number; shapes: Shape[]; skippedText?: number };

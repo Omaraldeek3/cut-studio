@@ -1,4 +1,5 @@
 import type { Raster } from './image';
+import { arcToCubics } from './path';
 
 /* Image to vector, in two modes.
 
@@ -833,6 +834,26 @@ function soften(d: V[], corners: number[], reach: number): V[] {
   return out;
 }
 
+/** Least-squares (Kåsa) circle through the points, or null when they are collinear. */
+function fitCircle(d: V[]) {
+  const n = d.length;
+  let mx = 0, my = 0;
+  for (const p of d) { mx += p.x; my += p.y; }
+  mx /= n; my /= n;
+  // Centred sums keep the solve well conditioned for large coordinates.
+  let suu = 0, svv = 0, suv = 0, suuu = 0, svvv = 0, suvv = 0, svuu = 0;
+  for (const p of d) {
+    const u = p.x - mx, v = p.y - my;
+    suu += u * u; svv += v * v; suv += u * v;
+    suuu += u * u * u; svvv += v * v * v; suvv += u * v * v; svuu += v * u * u;
+  }
+  const det = suu * svv - suv * suv;
+  if (Math.abs(det) < 1e-9) return null;
+  const bu = (suuu + suvv) / 2, bv = (svvv + svuu) / 2;
+  const uc = (bu * svv - bv * suv) / det, vc = (bv * suu - bu * suv) / det;
+  return { x: uc + mx, y: vc + my, r: Math.sqrt(uc * uc + vc * vc + (suu + svv) / n) };
+}
+
 export function fitLoop(points: Pt[], error: number, cornerAngle: number, reach = 0): VectorPath {
   const d: V[] = [];
   for (const p of points) if (!d.length || len(sub(p, d[d.length - 1])) > 1e-6) d.push(p);
@@ -844,6 +865,19 @@ export function fitLoop(points: Pt[], error: number, cornerAngle: number, reach 
   if (reach > 0) {
     const smooth = soften(d, corners, reach);
     for (let i = 0; i < n; i++) d[i] = smooth[i];
+  }
+  // A loop or a side that is a true circle or a straight line within `snap`
+  // is drawn as exactly that, so a traced ring comes out round and a
+  // square's sides come out straight instead of following the pixel noise.
+  const snap = Math.max(0.35, error * 0.5);
+  if (!corners.length) {
+    const round = fitCircle(d);
+    if (round && d.every(p => Math.abs(Math.hypot(p.x - round.x, p.y - round.y) - round.r) <= snap)) {
+      const dir = polygonArea(d) > 0 ? 1 : -1;
+      const s0 = { x: round.x + round.r, y: round.y }, s1 = { x: round.x - round.r, y: round.y };
+      const cubics = [...arcToCubics(s0, { to: s1, bulge: dir }), ...arcToCubics(s1, { to: s0, bulge: dir })];
+      return { x: s0.x, y: s0.y, curves: cubics.flatMap(c => (c.type === 'C' ? [[c.c1.x, c.c1.y, c.c2.x, c.c2.y, c.to.x, c.to.y] as Curve] : [])) };
+    }
   }
   if (!corners.length) {
     const ring = [...d, d[0]];
@@ -858,7 +892,11 @@ export function fitLoop(points: Pt[], error: number, cornerAngle: number, reach 
       for (let k = 0; k <= span; k++) piece.push(d[(from + k) % n]);
       piece[0] = sharp.get(from)!;
       piece[piece.length - 1] = sharp.get(to)!;
-      if (piece.length === 2) { fitCubic(piece, 0, 1, unit(sub(piece[1], piece[0])), unit(sub(piece[0], piece[1])), error, out); continue; }
+      const a = piece[0], b = piece[piece.length - 1], chord = len(sub(b, a));
+      if (piece.length === 2 || (chord > 0 && piece.every(p => Math.abs((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)) / chord <= snap))) {
+        out.push([a, add(a, mul(sub(b, a), 1 / 3)), add(a, mul(sub(b, a), 2 / 3)), b]);
+        continue;
+      }
       const t1 = tangent(piece, 0, 1, 2, false), t2 = tangent(piece, piece.length - 1, -1, 2, false);
       fitCubic(piece, 0, piece.length - 1, t1, t2, error, out);
     }

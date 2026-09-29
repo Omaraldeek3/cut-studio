@@ -1,4 +1,5 @@
 import type { Drawing, Shape } from './types';
+import type { Curve, Seg } from './path';
 import { flatten, pathData, type Shade, type VectorLayer, type VectorPath, type VectorResult } from './vectorize';
 import { buildPdf, mmToPt, pdfNumber, pdfPath } from './pdf';
 
@@ -82,8 +83,24 @@ export function colorPdf(result: VectorResult, widthMm: number) {
   return buildPdf({ width, height, content, shadings, title: 'Cut Studio vector' });
 }
 
-/** The traced shapes as the workshop's Drawing: one shape per colour, curves
- *  flattened to within 0.02 mm, ready for nesting and DXF. */
+/** A traced path as an exact Curve in millimetres, `k` mm per pixel. A cubic
+ *  whose controls sit on its chord is written as the line it is. */
+export function pathCurve(path: VectorPath, k: number): Curve {
+  const P = (x: number, y: number) => ({ x: x * k, y: y * k });
+  const segs: Seg[] = [];
+  let at = P(path.x, path.y);
+  for (const c of path.curves) {
+    const c1 = P(c[0], c[1]), c2 = P(c[2], c[3]), to = P(c[4], c[5]);
+    const l = Math.hypot(to.x - at.x, to.y - at.y) || 1;
+    const off = (q: { x: number; y: number }) => Math.abs((to.x - at.x) * (q.y - at.y) - (to.y - at.y) * (q.x - at.x)) / l;
+    segs.push(off(c1) < 1e-6 * l && off(c2) < 1e-6 * l ? { type: 'L', to } : { type: 'C', c1, c2, to });
+    at = to;
+  }
+  return { start: P(path.x, path.y), segs };
+}
+
+/** The traced shapes as the workshop's Drawing: one shape per colour, with
+ *  the exact curves for files and a 0.02 mm polyline for nesting. */
 export function resultToDrawing(result: VectorResult, widthMm: number): Drawing {
   const k = widthMm / result.width;
   const tolerance = 0.02 / k;
@@ -93,6 +110,7 @@ export function resultToDrawing(result: VectorResult, widthMm: number): Drawing 
     contours: layer.paths.map(path => ({
       closed: true,
       points: flatten(path, tolerance).map(p => ({ x: p.x * k, y: p.y * k })),
+      curve: pathCurve(path, k),
     })),
   }));
   return { width: widthMm, height: outputHeight(result, widthMm), shapes };

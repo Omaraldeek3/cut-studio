@@ -1,5 +1,6 @@
 import type { Bounds, Contour, Drawing, NestOptions, NestResult, Point, Shape } from './types';
 import { mapCurve } from './path';
+import { fitPolyline } from './fit';
 
 export const TOLERANCE = 0.1;
 export function finite(value: number, min: number, max: number, name: string) {
@@ -297,4 +298,146 @@ export function cleanDrawing(d:Drawing,removeDuplicates:boolean,minArea:number){
     return !(removeDuplicates&&duplicate)&&!small;
   })})).filter(s=>s.contours.length);
   return {drawing:{...d,shapes},duplicates,tiny,open};
+}
+
+// ——— Repair: what "delete overlap" and "join" do in a cutting program ———
+
+export type RepairOptions = { overlaps: boolean; join: number; minArea: number; reduce: boolean };
+export type RepairResult = { drawing: Drawing; overlapsRemovedMm: number; joined: number; tiny: number; nodesBefore: number; nodesAfter: number };
+
+const OVERLAP_EPS = 0.02;
+const cutLayer = (c: Contour) => c.layer !== 'engrave';
+const nodesOf = (c: Contour) => (c.curve ? c.curve.segs.length : c.points.length);
+
+type Piece = { shape: number; contour: number; a: Point; b: Point; keep: [number, number][] };
+
+/** Removes every stretch of a cut line that lies on top of an earlier one. */
+function removeOverlaps(d: Drawing): { drawing: Drawing; removed: number } {
+  const pieces: Piece[] = [];
+  d.shapes.forEach((s, si) => s.contours.forEach((c, ci) => {
+    if (!cutLayer(c)) return;
+    const n = c.points.length, count = c.closed ? n : n - 1;
+    for (let k = 0; k < count; k++) pieces.push({ shape: si, contour: ci, a: c.points[k], b: c.points[(k + 1) % n], keep: [[0, 1]] });
+  }));
+  // Pieces are bucketed by the cells their bounds touch, so only neighbours are compared.
+  const cell = 5, grid = new Map<string, number[]>();
+  pieces.forEach((p, i) => {
+    const x0 = Math.floor((Math.min(p.a.x, p.b.x) - OVERLAP_EPS) / cell), x1 = Math.floor((Math.max(p.a.x, p.b.x) + OVERLAP_EPS) / cell);
+    const y0 = Math.floor((Math.min(p.a.y, p.b.y) - OVERLAP_EPS) / cell), y1 = Math.floor((Math.max(p.a.y, p.b.y) + OVERLAP_EPS) / cell);
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) { const k = `${x},${y}`; const list = grid.get(k); if (list) list.push(i); else grid.set(k, [i]); }
+  });
+  const covered = new Map<number, [number, number][]>();
+  const compared = new Set<string>();
+  for (const list of grid.values()) for (let x = 0; x < list.length; x++) for (let y = x + 1; y < list.length; y++) {
+    const i = Math.min(list[x], list[y]), j = Math.max(list[x], list[y]), key = `${i},${j}`;
+    if (compared.has(key)) continue;
+    compared.add(key);
+    // The later piece gives way to the earlier one along their common stretch.
+    const early = pieces[i], late = pieces[j];
+    const L = Math.hypot(late.b.x - late.a.x, late.b.y - late.a.y);
+    if (L < 1e-9) continue;
+    const ux = (late.b.x - late.a.x) / L, uy = (late.b.y - late.a.y) / L;
+    const offLine = (p: Point) => Math.abs((p.x - late.a.x) * uy - (p.y - late.a.y) * ux);
+    if (offLine(early.a) > OVERLAP_EPS || offLine(early.b) > OVERLAP_EPS) continue;
+    const t = (p: Point) => ((p.x - late.a.x) * ux + (p.y - late.a.y) * uy) / L;
+    const lo = Math.max(0, Math.min(t(early.a), t(early.b))), hi = Math.min(1, Math.max(t(early.a), t(early.b)));
+    if (hi - lo <= 1e-9) continue;
+    covered.set(j, [...(covered.get(j) ?? []), [lo, hi]]);
+  }
+  if (!covered.size) return { drawing: d, removed: 0 };
+  let removed = 0;
+  for (const [j, spans] of covered) {
+    const piece = pieces[j], L = Math.hypot(piece.b.x - piece.a.x, piece.b.y - piece.a.y);
+    let keep: [number, number][] = [[0, 1]];
+    for (const [lo, hi] of spans) keep = keep.flatMap(([a, b]) => ([[a, Math.min(b, lo)], [Math.max(a, hi), b]] as [number, number][]).filter(([p, q]) => q - p > 1e-9));
+    removed += (1 - keep.reduce((sum, [a, b]) => sum + (b - a), 0)) * L;
+    // Slivers shorter than the tolerance are noise, not lines to cut.
+    piece.keep = keep.filter(([a, b]) => (b - a) * L > OVERLAP_EPS);
+  }
+  const byContour = new Map<string, Piece[]>();
+  for (const p of pieces) { const k = `${p.shape},${p.contour}`; const list = byContour.get(k); if (list) list.push(p); else byContour.set(k, [p]); }
+  const at = (p: Piece, t: number) => ({ x: p.a.x + (p.b.x - p.a.x) * t, y: p.a.y + (p.b.y - p.a.y) * t });
+  const shapes = d.shapes.map((s, si) => ({ ...s, contours: s.contours.flatMap((c, ci): Contour[] => {
+    const own = byContour.get(`${si},${ci}`);
+    if (!own || own.every(p => p.keep.length === 1 && p.keep[0][0] === 0 && p.keep[0][1] === 1)) return [c];
+    // What is left, as open chains; a closed contour's last chain continues
+    // into its first when both run through the contour's start.
+    const chains: Point[][] = [];
+    let chain: Point[] | null = null;
+    for (const p of own) for (const [a, b] of p.keep) {
+      const to = at(p, b);
+      if (chain && a === 0) chain.push(to);
+      else { chain = [at(p, a), to]; chains.push(chain); }
+      if (b !== 1) chain = null;
+    }
+    const first = own[0].keep[0], last = own[own.length - 1].keep.at(-1);
+    if (c.closed && chains.length > 1 && first?.[0] === 0 && last?.[1] === 1) { const tail = chains.pop()!; chains[0] = [...tail, ...chains[0].slice(1)]; }
+    return chains.map(points => ({ closed: false, points }));
+  }) })).filter(s => s.contours.length);
+  return { drawing: { ...d, shapes }, removed };
+}
+
+/** Connects open cut paths whose ends are within `limit` mm, closing a path
+ *  when its own two ends meet. Returns how many joins were made. */
+function joinOpen(d: Drawing, limit: number): { drawing: Drawing; joined: number } {
+  const open: { shape: number; points: Point[] }[] = [];
+  const shapes = d.shapes.map((s, si) => ({ ...s, contours: s.contours.filter(c => {
+    if (c.closed || !cutLayer(c)) return true;
+    open.push({ shape: si, points: [...c.points] });
+    return false;
+  }) }));
+  const gap = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+  let joined = 0;
+  for (;;) {
+    // The closest pair of ends, including a path's own two ends.
+    let best = limit, pick: [number, number, boolean, boolean] | null = null;
+    for (let i = 0; i < open.length; i++) {
+      const p = open[i].points;
+      if (p.length > 2 && gap(p[0], p[p.length - 1]) <= best) { best = gap(p[0], p[p.length - 1]); pick = [i, i, true, true]; }
+      for (let j = i + 1; j < open.length; j++) {
+        const q = open[j].points;
+        for (const [endOfI, startOfJ] of [[true, true], [true, false], [false, true], [false, false]] as [boolean, boolean][]) {
+          const g = gap(endOfI ? p[p.length - 1] : p[0], startOfJ ? q[0] : q[q.length - 1]);
+          if (g <= best) { best = g; pick = [i, j, endOfI, startOfJ]; }
+        }
+      }
+    }
+    if (!pick) break;
+    joined++;
+    const [i, j, endOfI, startOfJ] = pick;
+    if (i === j) {
+      const p = open[i].points;
+      if (gap(p[0], p[p.length - 1]) < 1e-9) p.pop();
+      shapes[open[i].shape].contours.push({ closed: true, points: p });
+      open.splice(i, 1);
+      continue;
+    }
+    const p = endOfI ? open[i].points : [...open[i].points].reverse();
+    let q = startOfJ ? open[j].points : [...open[j].points].reverse();
+    if (gap(p[p.length - 1], q[0]) < 1e-9) q = q.slice(1);
+    open[i] = { shape: open[i].shape, points: [...p, ...q] };
+    open.splice(j, 1);
+  }
+  for (const r of open) shapes[r.shape].contours.push({ closed: false, points: r.points });
+  return { drawing: { ...d, shapes: shapes.filter(s => s.contours.length) }, joined };
+}
+
+/** Repairs a drawing for cutting: removes overlapping lines, joins small
+ *  gaps, drops tiny closed contours and refits nodes into lines and arcs.
+ *  Engraved lines are left exactly as they are. */
+export function repairDrawing(d: Drawing, o: RepairOptions): RepairResult {
+  finite(o.minArea, 0, 100, 'Minimum area'); finite(o.join, 0, 10, 'Join distance');
+  const count = (x: Drawing) => x.shapes.reduce((sum, s) => sum + s.contours.filter(cutLayer).reduce((n, c) => n + nodesOf(c), 0), 0);
+  const nodesBefore = count(d);
+  let drawing = d, overlapsRemovedMm = 0, joined = 0, tiny = 0;
+  if (o.overlaps) ({ drawing, removed: overlapsRemovedMm } = removeOverlaps(drawing));
+  if (o.join > 0) ({ drawing, joined } = joinOpen(drawing, o.join));
+  if (o.minArea > 0) drawing = { ...drawing, shapes: drawing.shapes.map(s => ({ ...s, contours: s.contours.filter(c => {
+    const small = cutLayer(c) && c.closed && Math.abs(signedArea(c.points)) < o.minArea;
+    if (small) tiny++;
+    return !small;
+  }) })).filter(s => s.contours.length) };
+  // Changed contours were rebuilt from their points and carry no curve; refit those.
+  if (o.reduce) drawing = { ...drawing, shapes: drawing.shapes.map(s => ({ ...s, contours: s.contours.map(c => (!cutLayer(c) || c.curve ? c : { ...c, curve: fitPolyline(c.points, c.closed, 0.02) })) })) };
+  return { drawing, overlapsRemovedMm, joined, tiny, nodesBefore, nodesAfter: count(drawing) };
 }

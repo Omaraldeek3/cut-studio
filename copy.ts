@@ -7,7 +7,7 @@ export const titles:Record<ToolId,[string,string]>={nest:['Material nesting','ت
 export const descriptions:Record<ToolId,[string,string]>={
   nest:['A better fit for every piece. Arrange your outlines and make the most of your material.','رتّب حدود القطع للاستفادة من مساحة الخامة وتقليل الهدر.'],
   trace:['Trace logos, cartoons and photos into smooth colour vectors for print, or into clean outlines for the laser and plotter.','حوّل الشعارات والرسومات والصور إلى فيكتور ملوّن بمنحنيات ناعمة للطباعة، أو إلى حدود نظيفة للّيزر والبلوتر.'],
-  clean:['Inspect open paths, remove duplicate contours, and clear away tiny details.','افحص المسارات المفتوحة وأزل الحدود المكررة والتفاصيل الصغيرة.'],
+  clean:['Repair a file for cutting: remove overlapping lines, join small gaps and cut the nodes down to clean lines and arcs.','أصلح الملف للقص: احذف الخطوط المتداخلة، واربط الفجوات الصغيرة، وحوّل النقاط الكثيرة إلى خطوط وأقواس نظيفة.'],
   repeat:['One design, exactly the size you need. Scale and repeat with precise spacing.','اضبط أبعاد التصميم وكرّره بمسافات دقيقة.'],
   cost:['Know your material cost before the first cut. Use your own prices and quantities.','احسب تكلفة الخامة قبل القص باستخدام أسعارك وكمياتك.'],
   kerf:['Find the fit that feels right. Generate a slotted coupon for your material.','أنشئ عينة بفتحات مختلفة لاختيار المقاس الأنسب لتعشيق الخامة.'],

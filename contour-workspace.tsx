@@ -8,50 +8,23 @@ import { VectorInput } from './vector-input';
 import { decodeImage, ImageDrop, IMAGE_TYPES, saveFile, usePastedImage } from './image-input';
 import { fillHoles, offsetLoops } from './offset';
 import { fitLoop, flatten } from './vectorize';
+import { offsetContours } from './vector-ops';
+import { flattenCurve } from './path';
+import { moveShape, signedArea } from './geometry';
 import { buildPdf, mmToPt, pdfNumber } from './pdf';
 
-/* Contour and offset. A vector shape (letters, a logo) or a picture (a
-   sticker) is rasterised finely, and outlines are drawn at a set distance
-   from it: a base plate for acrylic letters, a weeding border, or the cut line
-   around a printed sticker, which also exports as a print-and-cut PDF whose
-   line is the "CutContour" spot colour cutters look for. */
+/* Contour and offset. A vector shape (letters, a logo) is offset as vectors,
+   with exact lines and round corners; a picture (a sticker) is rasterised
+   finely and traced. Outlines are drawn at a set distance: a base plate for
+   acrylic letters, a weeding border, or the cut line around a printed
+   sticker, which also exports as a print-and-cut PDF whose line is the
+   "CutContour" spot colour cutters look for. */
 
 type Mode = 'vector' | 'image';
 type Props = { lang: Language; drawing: Drawing | null; setDrawing: (d: Drawing | null) => void; filename: string; setFilename: (n: string) => void; onNest: (d: Drawing) => void };
 type Sticker = { raster: Raster; name: string; url: string };
 type Placement = { x: number; y: number; width: number; height: number };
 type Built = { drawing: Drawing | null; rings: Contour[][]; error: string; ppm: number; placement: Placement | null };
-
-const RASTER_SIDE = 2600;
-
-/** Fills the closed cut contours of a drawing into a 0/1 mask with `pad` mm
- *  of empty space around them. Returns the mask and where it sits in mm. */
-function rasterizeDrawing(drawing: Drawing, pad: number) {
-  const closed = drawing.shapes.map(s => ({ ...s, contours: s.contours.filter(c => c.closed && c.layer !== 'engrave' && c.points.length > 2) })).filter(s => s.contours.length);
-  if (!closed.length) throw new Error('The drawing has no closed outlines to offset.');
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  for (const s of closed) for (const c of s.contours) for (const p of c.points) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
-  const spanX = x1 - x0 + pad * 2, spanY = y1 - y0 + pad * 2;
-  const ppm = Math.min(30, Math.max(1.5, RASTER_SIDE / Math.max(spanX, spanY)));
-  const w = Math.ceil(spanX * ppm), h = Math.ceil(spanY * ppm);
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context) throw new Error('Canvas is unavailable in this browser.');
-  context.fillStyle = '#000';
-  for (const s of closed) {
-    const path = new Path2D();
-    for (const c of s.contours) {
-      c.points.forEach((p, i) => { const x = (p.x - x0 + pad) * ppm, y = (p.y - y0 + pad) * ppm; if (i) path.lineTo(x, y); else path.moveTo(x, y); });
-      path.closePath();
-    }
-    context.fill(path, 'evenodd');
-  }
-  const data = context.getImageData(0, 0, w, h).data;
-  const mask = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) mask[i] = data[i * 4 + 3] >= 128 ? 1 : 0;
-  return { mask, w, h, ppm, originX: x0 - pad, originY: y0 - pad, source: closed };
-}
 
 /** The sticker's shape: opaque pixels when the picture has transparency,
  *  otherwise every pixel that differs from the colour of its corners. */
@@ -107,14 +80,22 @@ export function ContourWorkspace(props: Props) {
       if (count < 1 || count > 6) throw new Error('Outlines must be between 1 and 6.');
       const offsets = Array.from({ length: count }, (_, i) => distance + i * step);
       const reach = Math.max(0, ...offsets) + 2;
+      const inside = (p: { x: number; y: number }, loop: { x: number; y: number }[]) => { let hit = false; for (let i = 0, j = loop.length - 1; i < loop.length; j = i++) { const a = loop[i], b = loop[j]; if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) hit = !hit; } return hit; };
       const error = 0.35 + (smoothing / 100) * 1.4;
       let mask: Uint8Array, w: number, h: number, ppm: number, originX: number, originY: number;
       const shapes: Shape[] = [];
+      let ringContours: Contour[][];
       if (mode === 'vector') {
         if (!shared) return { drawing: null, rings: [], error: '', ppm: 0, placement: null };
-        const r = rasterizeDrawing(shared, reach);
-        ({ mask, w, h, ppm, originX, originY } = r);
-        if (original) r.source.forEach((s, i) => shapes.push({ ...s, id: `original-${i}`, name: s.name || 'Original' }));
+        // Vector artwork is offset as vectors: exact lines and round arcs.
+        const source = shared.shapes.map(s => ({ ...s, contours: s.contours.filter(c => c.closed && c.layer !== 'engrave' && c.points.length > 2) })).filter(s => s.contours.length);
+        if (!source.length) throw new Error('The drawing has no closed outlines to offset.');
+        if (original) source.forEach((s, i) => shapes.push({ ...s, id: `original-${i}`, name: s.name || 'Original' }));
+        const loops = source.flatMap(s => s.contours.map(c => (c.curve ? flattenCurve(c.curve, true, 0.005) : c.points)));
+        // Filling holes offsets each shape's outer outline only.
+        const outer = holes ? loops.filter((loop, i) => !loops.some((other, j) => j !== i && Math.abs(signedArea(other)) > Math.abs(signedArea(loop)) && inside(loop[0], other))) : loops;
+        ringContours = offsets.map(d => offsetContours(outer, d, 0.01, 'evenodd'));
+        ppm = 0; originX = 0; originY = 0;
       } else {
         if (!sticker) return { drawing: null, rings: [], error: '', ppm: 0, placement: null };
         if (!(stickerWidth > 0)) throw new Error('Sticker width must be above zero.');
@@ -124,19 +105,19 @@ export function ContourWorkspace(props: Props) {
         const r = stickerMask(sticker.raster, pad);
         ({ mask, w, h } = r);
         originX = -pad / ppm; originY = -pad / ppm;
+        const source = holes ? fillHoles(mask, w, h) : mask;
+        ringContours = offsets.map(d => offsetLoops(source, w, h, d * ppm)
+          .map(loop => fitLoop(loop, error, 70))
+          .filter(path => path.curves.length)
+          .map(path => ({ closed: true, points: flatten(path, 0.02 * ppm).map(p => ({ x: originX + p.x / ppm, y: originY + p.y / ppm })) })));
       }
-      const source = holes ? fillHoles(mask, w, h) : mask;
-      const ringContours: Contour[][] = offsets.map(d => offsetLoops(source, w, h, d * ppm)
-        .map(loop => fitLoop(loop, error, 70))
-        .filter(path => path.curves.length)
-        .map(path => ({ closed: true, points: flatten(path, 0.02 * ppm).map(p => ({ x: originX + p.x / ppm, y: originY + p.y / ppm })) })));
       if (!ringContours.some(r => r.length)) throw new Error('Nothing is left at that offset. An inward offset may be larger than the shape.');
       ringContours.forEach((contours, i) => { if (contours.length) shapes.push({ id: `offset-${i}`, name: `Offset ${offsets[i]} mm`, contours }); });
       // Everything is moved so the drawing starts at the origin.
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const s of shapes) for (const c of s.contours) for (const p of c.points) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
-      const moved = shapes.map(s => ({ ...s, contours: s.contours.map(c => ({ ...c, points: c.points.map(p => ({ x: p.x - x0, y: p.y - y0 })) })) }));
-      const shift = (contours: Contour[]) => contours.map(c => ({ ...c, points: c.points.map(p => ({ x: p.x - x0, y: p.y - y0 })) }));
+      const moved = shapes.map(s => moveShape(s, -x0, -y0));
+      const shift = (contours: Contour[]) => moveShape({ id: '', name: '', contours }, -x0, -y0).contours;
       // The sticker picture starts at the raster's padding, which is (0, 0) before the shift.
       const placement = mode === 'image' && sticker
         ? { x: -x0, y: -y0, width: stickerWidth, height: (sticker.raster.height / sticker.raster.width) * stickerWidth }

@@ -1,13 +1,13 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type * as HB from 'harfbuzzjs';
-import type { Drawing, Shape } from './types';
+import type { Contour, Drawing, Shape } from './types';
 import type { ToolId } from './copy';
 import { tx, type Language } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Range, Section, Stat, Toggle, VectorPreview } from './ui';
-import { commandLoops, groupLoops, layoutText, type Align, type Command, type Fonts, type Shaper } from './lettering';
+import { commandLoops, groupLoops, layoutText, type Align, type Fonts, type Shaper } from './lettering';
 import { woffToSfnt } from './woff';
-import { fitLoop, flatten, isolines } from './vectorize';
+import { unionContours } from './vector-ops';
 
 /* Arabic and English lettering as cut paths. Text is shaped by HarfBuzz in
    the browser, with the built-in Tajawal, any font installed on this
@@ -49,35 +49,6 @@ async function builtInFonts(weight: string): Promise<{ engine: typeof HB; choice
 }
 
 const WEIGHTS = [{ id: '400', en: 'Regular', ar: 'عادي' }, { id: '700', en: 'Bold', ar: 'عريض' }, { id: '900', en: 'Black', ar: 'عريض جداً' }];
-
-/** Welds glyphs by filling them on a fine canvas and tracing the result. */
-function weld(glyphs: Command[][], bounds: { x0: number; y0: number; x1: number; y1: number }) {
-  const side = 3200, pad = 6;
-  const scale = side / Math.max(bounds.x1 - bounds.x0, bounds.y1 - bounds.y0);
-  const w = Math.ceil((bounds.x1 - bounds.x0) * scale) + pad * 2, h = Math.ceil((bounds.y1 - bounds.y0) * scale) + pad * 2;
-  const canvas = document.createElement('canvas');
-  canvas.width = w; canvas.height = h;
-  const context = canvas.getContext('2d', { willReadFrequently: true });
-  if (!context) throw new Error('Canvas is unavailable in this browser.');
-  const X = (v: number) => (v - bounds.x0) * scale + pad, Y = (v: number) => (v - bounds.y0) * scale + pad;
-  const path = new Path2D();
-  for (const glyph of glyphs) for (const c of glyph) {
-    const v = c.values;
-    if (c.type === 'M') path.moveTo(X(v[0]), Y(v[1]));
-    else if (c.type === 'L') path.lineTo(X(v[0]), Y(v[1]));
-    else if (c.type === 'Q') path.quadraticCurveTo(X(v[0]), Y(v[1]), X(v[2]), Y(v[3]));
-    else if (c.type === 'C') path.bezierCurveTo(X(v[0]), Y(v[1]), X(v[2]), Y(v[3]), X(v[4]), Y(v[5]));
-    else if (c.type === 'Z') path.closePath();
-  }
-  context.fill(path, 'nonzero');
-  const data = context.getImageData(0, 0, w, h).data;
-  const field = new Float32Array(w * h);
-  for (let i = 0; i < w * h; i++) field[i] = data[i * 4 + 3] / 255;
-  // The canvas's own anti-aliasing places the edge between pixels.
-  return isolines(field, w, h, 0.5)
-    .map(loop => flatten(fitLoop(loop, 0.3, 75), 0.04))
-    .map(loop => loop.map(p => ({ x: (p.x - pad) / scale + bounds.x0, y: (p.y - pad) / scale + bounds.y0 })));
-}
 
 export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (drawing: Drawing, tool: ToolId, name?: string) => void }) {
   const [text, setText] = useState('افتتاح قريباً');
@@ -139,13 +110,18 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
       if (!exact.length) return { drawing: null, parts: 0, problem: '' };
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const loop of exact) for (const p of loop) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
-      const loops = welded ? weld(layout.glyphs, { x0, y0, x1, y1 }) : exact;
       if (!(size > 0)) throw new Error('Size must be above zero.');
       const k = size / (fit === 'width' ? x1 - x0 : y1 - y0);
       const width = (x1 - x0) * k, height = (y1 - y0) * k;
       const toMm = (p: { x: number; y: number }) => ({ x: mirror ? width - (p.x - x0) * k : (p.x - x0) * k, y: (p.y - y0) * k });
-      const groups = groupLoops(loops);
-      const shapes: Shape[] = groups.map((group, i) => ({ id: `letter-${i}`, name: `Letter ${i + 1}`, contours: group.map(loop => ({ closed: true, points: loop.map(toMm) })) }));
+      // The glyphs again, flattened within 0.005 mm at the final size.
+      const fine = commandLoops(layout.glyphs, 0.005 / k).map(loop => loop.map(toMm));
+      // Welding unions the outlines as vectors and refits them within 0.01 mm;
+      // unwelded outlines keep the font's own, and export fits them.
+      const contours: Contour[] = welded ? unionContours(fine) : fine.map(points => ({ closed: true, points }));
+      const byLoop = new Map(contours.map(c => [c.points, c]));
+      const groups = groupLoops(contours.map(c => c.points));
+      const shapes: Shape[] = groups.map((group, i) => ({ id: `letter-${i}`, name: `Letter ${i + 1}`, contours: group.map(loop => byLoop.get(loop)!) }));
       return { drawing: { width, height, shapes }, parts: groups.length, problem: '' };
     } catch (cause) { return { drawing: null, parts: 0, problem: cause instanceof Error ? cause.message : 'Lettering failed.' }; }
   }, [layout, welded, size, fit, mirror]);

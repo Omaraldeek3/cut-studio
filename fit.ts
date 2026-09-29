@@ -9,6 +9,11 @@ import type { Curve, Seg } from './path';
 
 /** A turn sharper than 30° is a corner and always stays one. */
 const CORNER = Math.cos(Math.PI / 6);
+/** How far an arc may bulge away from one input segment. Sampled curves
+ *  stay well under this (the generators sample within 0.05 mm, SVG import
+ *  within 0.09 mm), while a long straight side next to a small curve would
+ *  bulge far more, so it can never be swallowed into an arc. */
+const ARC_SAG = 0.1;
 
 function clean(points: Point[], closed: boolean) {
   const d: Point[] = [];
@@ -50,6 +55,8 @@ function arc(p: Point[], i: number, j: number, tol: number): number | null {
   let sweep = 0;
   for (let k = i; k < j; k++) {
     if (k > i && Math.abs(Math.hypot(p[k].x - c.x, p[k].y - c.y) - c.r) > tol) return null;
+    const chord = Math.hypot(p[k + 1].x - p[k].x, p[k + 1].y - p[k].y);
+    if (c.r - Math.sqrt(Math.max(0, c.r * c.r - (chord * chord) / 4)) > ARC_SAG) return null;
     if (k + 2 <= j && Math.sign(cross(p[k], p[k + 1], p[k + 2])) !== sign) return null;
     let d = Math.atan2(p[k + 1].y - c.y, p[k + 1].x - c.x) - Math.atan2(p[k].y - c.y, p[k].x - c.x);
     while (d > Math.PI) d -= 2 * Math.PI;
@@ -84,7 +91,8 @@ export function fitPolyline(points: Point[], closed: boolean, tolerance: number)
   const n = d.length;
   if (closed && n >= 8) {
     const c = circleThrough(d[0], d[Math.floor(n / 3)], d[Math.floor((2 * n) / 3)]);
-    if (c && d.every(p => Math.abs(Math.hypot(p.x - c.x, p.y - c.y) - c.r) <= tolerance)) {
+    const sag = (a: Point, b: Point) => { const l = Math.hypot(b.x - a.x, b.y - a.y); return c!.r - Math.sqrt(Math.max(0, c!.r * c!.r - (l * l) / 4)); };
+    if (c && d.every((p, i) => Math.abs(Math.hypot(p.x - c.x, p.y - c.y) - c.r) <= tolerance && sag(p, d[(i + 1) % n]) <= ARC_SAG)) {
       const opposite = { x: 2 * c.x - d[0].x, y: 2 * c.y - d[0].y };
       const b = Math.sign(cross(d[0], d[1], d[2])) || 1;
       return { start: d[0], segs: [{ type: 'A', to: opposite, bulge: b }, { type: 'A', to: d[0], bulge: b }] };

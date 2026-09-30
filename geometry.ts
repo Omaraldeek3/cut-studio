@@ -271,10 +271,6 @@ export function repeatDrawing(d:Drawing,width:number,height:number,columns:numbe
   for(let r=0;r<rows;r++)for(let c=0;c<columns;c++)for(const s of d.shapes)shapes.push({...mapShape(s,p=>({x:p.x*width/d.width+c*(width+gap),y:p.y*height/d.height+r*(height+gap)})),id:`${s.id}-${r}-${c}`});
   return {width:width*columns+gap*(columns-1),height:height*rows+gap*(rows-1),shapes};
 }
-export function costEstimate(price:number,sheets:number,pieces:number,overhead:number,labour:number,machine:number){
-  finite(price,0,1e7,'Sheet price');finite(sheets,0,10000,'Sheets');finite(pieces,1,1e7,'Finished pieces');finite(overhead,0,1000,'Overhead');finite(labour,0,1e7,'Labour');finite(machine,0,1e7,'Machine cost');
-  const material=price*sheets,extras=labour+machine,total=(material+extras)*(1+overhead/100);return{material,extras,total,perItem:total/pieces};
-}
 export function kerfDrawing(thickness:number,step:number,count:number):Drawing & {labels:{x:number;y:number;value:string}[]}{
   finite(thickness,0.5,30,'Material thickness');finite(step,0.01,1,'Step');finite(count,3,15,'Slots');
   if(!Number.isInteger(count)||thickness-step*(count-1)/2<=0)throw new Error('Use whole-number slots and keep every slot width above zero.');

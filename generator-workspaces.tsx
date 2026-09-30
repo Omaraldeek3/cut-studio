@@ -12,10 +12,10 @@ import { ErrorNote, Exports, Icon, NumberField, Section, Stat, Toggle, VectorPre
 import { VectorInput } from './vector-input';
 import { download } from './export';
 import {
-  defaultGear, defaultHinge, defaultJob, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
-  centreDistance, duration, gearDrawing, gearGeometry, gearPairDrawing, hingeDrawing, jobEstimate, pathStats, patternDrawing, printSize, puzzleDrawing,
+  defaultGear, defaultHinge, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
+  centreDistance, gearDrawing, gearGeometry, gearPairDrawing, hingeDrawing, pathStats, patternDrawing, printSize, puzzleDrawing,
   resolution, rulerDrawing, steps, tagDrawing, testCardDrawing, MAX_TEST_SQUARES,
-  type GearOptions, type HingeOptions, type JobOptions, type PatternKind, type PatternOptions, type PuzzleOptions,
+  type GearOptions, type HingeOptions, type PatternKind, type PatternOptions, type PuzzleOptions,
   type RulerOptions, type TagOptions, type TagShape, type TestCardOptions,
 } from './generators';
 
@@ -300,52 +300,6 @@ export function RulerWorkspace({ lang }: { lang: Language }) {
       <NumberField label={tx(lang, 'Hanging hole', 'ثقب التعليق')} value={o.hole} onChange={set('hole')} step={0.5} unit="mm"/>
     </Section>
   </Frame>;
-}
-
-// ——— Job time ———
-
-type InputProps = { lang: Language; drawing: Drawing | null; setDrawing: (d: Drawing | null) => void; filename: string; setFilename: (n: string) => void };
-
-export function JobTimeWorkspace(props: InputProps) {
-  const { lang, drawing } = props;
-  const [o, set] = useOptions<JobOptions>(defaultJob);
-  const [currency, setCurrency] = useState('ILS');
-  const result = useMemo(() => {
-    if (!drawing) return { value: null, error: '' };
-    try { return { value: jobEstimate(drawing, o), error: '' }; } catch (e) { return { value: null, error: e instanceof Error ? e.message : 'Invalid settings.' }; }
-  }, [drawing, o]);
-  const r = result.value;
-  const csv = () => { if (r) download(`Item,Value\nCut length (mm),${r.cut.toFixed(1)}\nEngrave length (mm),${r.engrave.toFixed(1)}\nPaths,${r.cutPaths + r.engravePaths}\nTime per copy (s),${r.each.toFixed(1)}\nCopies,${o.copies}\nTotal time (s),${r.seconds.toFixed(1)}\nMachine cost (${currency}),${r.cost.toFixed(2)}\n`, 'job-estimate.csv', 'text/csv'); };
-  return <div className="workspace"><aside className="controls">
-    <VectorInput {...props}/>
-    <Section title={tx(lang, 'Machine', 'الماكينة')} number="02">
-      <div className="field-pair"><NumberField label={tx(lang, 'Cut speed', 'سرعة القص')} value={o.cutSpeed} onChange={set('cutSpeed')} min={0.1} step={0.5} unit="mm/s"/><NumberField label={tx(lang, 'Engrave speed', 'سرعة الحفر')} value={o.engraveSpeed} onChange={set('engraveSpeed')} min={0.1} unit="mm/s"/></div>
-      <div className="field-pair"><NumberField label={tx(lang, 'Pierce time', 'زمن الثقب')} value={o.pierce} onChange={set('pierce')} step={0.1} unit="s"/><NumberField label={tx(lang, 'Travel allowance', 'هامش الحركة')} value={o.travel} onChange={set('travel')} max={300} unit="%"/></div>
-    </Section>
-    <Section title={tx(lang, 'Job', 'العمل')} number="03">
-      <NumberField label={tx(lang, 'Copies', 'عدد النسخ')} value={o.copies} onChange={set('copies')} min={1} max={100000}/>
-      <div className="field-pair"><NumberField label={tx(lang, 'Machine rate / hour', 'أجرة الساعة')} value={o.rate} onChange={set('rate')} step={0.5} unit={currency}/>
-        <label className="field"><span>{tx(lang, 'Currency', 'العملة')}</span><select value={currency} onChange={e => setCurrency(e.target.value)}><option value="ILS">ILS</option><option value="USD">USD</option><option value="JOD">JOD</option><option value="EUR">EUR</option></select></label></div>
-    </Section>
-    <div className="control-action"><ErrorNote error={result.error}/></div>
-  </aside>
-  <div className="canvas-column">
-    <div className="cost-card">
-      <div className="cost-card-heading"><span className="eyebrow">{tx(lang, 'ESTIMATED MACHINE TIME', 'الزمن التقديري على الماكينة')}</span><Icon name="jobtime" size={28}/></div>
-      <span>{tx(lang, 'Total for all copies', 'الإجمالي لكل النسخ')}</span>
-      <div className="cost-total" dir="ltr"><strong data-testid="job-time">{r ? duration(r.seconds) : '—'}</strong><small>{r && r.seconds >= 3600 ? 'h:mm:ss' : 'm:ss'}</small></div>
-      <div className="cost-per"><span>{tx(lang, 'Machine cost', 'تكلفة الماكينة')}</span><strong dir="ltr">{r ? r.cost.toFixed(2) : '—'} {currency}</strong></div>
-      <div className="cost-breakdown">
-        <div><span>{tx(lang, 'Cutting', 'القص')} <small dir="ltr">{r ? `${(r.cut / 1000).toFixed(2)} m` : ''}</small></span><b dir="ltr">{r ? duration(r.cutting) : '—'}</b></div>
-        <div><span>{tx(lang, 'Vector engraving', 'الحفر الخطي')} <small dir="ltr">{r ? `${(r.engrave / 1000).toFixed(2)} m` : ''}</small></span><b dir="ltr">{r ? duration(r.engraving) : '—'}</b></div>
-        <div><span>{tx(lang, 'Piercing', 'الثقب')} <small dir="ltr">{r ? `${r.cutPaths + r.engravePaths} ×` : ''}</small></span><b dir="ltr">{r ? duration(r.piercing) : '—'}</b></div>
-        <div><span>{tx(lang, 'Per copy, with travel', 'للنسخة الواحدة مع الحركة')}</span><b dir="ltr">{r ? duration(r.each) : '—'}</b></div>
-      </div>
-      <div className="cost-formula">{tx(lang, '(length ÷ speed + paths × pierce) × (1 + travel ÷ 100) × copies', '(الطول ÷ السرعة + المسارات × الثقب) × (١ + الحركة ÷ ١٠٠) × النسخ')}</div>
-      <button className="button dark wide" disabled={!r} onClick={csv}><Icon name="download" size={17}/>{tx(lang, 'Download estimate', 'تحميل التقدير')}</button>
-    </div>
-    <div className="tip-card"><span className="tip-mark">i</span><p>{tx(lang, 'An estimate from path lengths. Acceleration on short curves makes real jobs slower; raise the travel allowance until it matches a job you have timed.', 'تقدير من أطوال المسارات. التسارع في المنحنيات القصيرة يجعل العمل الفعلي أبطأ؛ ارفع هامش الحركة حتى يطابق عملاً وقّته بنفسك.')}</p></div>
-  </div></div>;
 }
 
 // ——— Resolution ———

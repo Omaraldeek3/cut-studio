@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { descriptions, titles, toolIds, tx, type Language, type ToolId } from './copy';
 import { Icon } from './ui';
 import { NestWorkspace, EditWorkspace, KerfWorkspace } from './vector-workspaces';
-import { CostWorkspace } from './cost-workspace';
+import { QuoteWorkspace } from './quote-workspace';
 import { BoxWorkspace } from './box-workspace';
 import { EngraveWorkspace } from './engrave-workspace';
 import { VectorizeWorkspace } from './vectorize-workspace';
@@ -13,7 +13,7 @@ import { TilingWorkspace } from './tiling-workspace';
 import { ContourWorkspace } from './contour-workspace';
 import { LetteringWorkspace } from './lettering-workspace';
 import { SheetWorkspace } from './sheet-workspace';
-import { DpiWorkspace, GearWorkspace, HingeWorkspace, JobTimeWorkspace, PatternWorkspace, PuzzleWorkspace, RulerWorkspace, TagWorkspace, TestCardWorkspace } from './generator-workspaces';
+import { DpiWorkspace, GearWorkspace, HingeWorkspace, PatternWorkspace, PuzzleWorkspace, RulerWorkspace, TagWorkspace, TestCardWorkspace } from './generator-workspaces';
 import { referenceDrawing, sampleDrawing } from './samples';
 import { download, toDxf, toSvg } from './export';
 import type { Drawing } from './types';
@@ -46,7 +46,7 @@ export default function Toolkit(){
   case 'lettering':return <LetteringWorkspace lang={lang} onSend={onSend}/>;
   case 'sheet':return <SheetWorkspace lang={lang}/>;
   case 'clean':case 'repeat':return <EditWorkspace key={active} {...props} tool={active}/>;
-  case 'cost':return <CostWorkspace lang={lang}/>;
+  case 'quote':return <QuoteWorkspace {...props}/>;
   case 'kerf':return <KerfWorkspace lang={lang}/>;
   case 'engrave':return <EngraveWorkspace lang={lang}/>;
   case 'box':return <BoxWorkspace lang={lang} onNest={onNest}/>;
@@ -57,7 +57,6 @@ export default function Toolkit(){
   case 'pattern':return <PatternWorkspace lang={lang} onNest={onNest}/>;
   case 'testcard':return <TestCardWorkspace lang={lang}/>;
   case 'ruler':return <RulerWorkspace lang={lang}/>;
-  case 'jobtime':return <JobTimeWorkspace {...props}/>;
   case 'dpi':return <DpiWorkspace lang={lang}/>;
  }}
  return <div className="toolkit"><a className="tool-skip" href="#workspace">{tx(lang,'Skip to workspace','انتقل إلى مساحة العمل')}</a><aside className="sidebar"><Link href="/tools" className="brand" aria-label="Cut Studio home"><span className="brand-mark"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M3 3h12v12H3zM19 3h10v6H19zM19 13h10v16H19zM3 19h12v10H3z" fill="currentColor"/></svg></span><span>CUT<span className="brand-light">STUDIO</span><small>{tx(lang,'THE DESIGNER’S WORKBENCH','مساحة أدوات المصمّم')}</small></span></Link><div className="sidebar-caption">{tx(lang,'YOUR TOOLS','أدواتك')}<span>{String(toolIds.length).padStart(2,'0')}</span></div><nav aria-label={tx(lang,'Design tools','أدوات التصميم')}>{toolIds.map((id,i)=><button key={id} className={active===id?'active':''} aria-label={titles[id][index]} aria-current={active===id?'page':undefined} onClick={()=>setActive(id)}><Icon name={id}/><span>{titles[id][index]}</span><small>{String(i+1).padStart(2,'0')}</small></button>)}</nav><label className="tool-picker"><span>{tx(lang,'Tool','الأداة')}</span><select value={active} onChange={e=>setActive(e.target.value as typeof active)}>{toolIds.map((id,i)=><option key={id} value={id}>{String(i+1).padStart(2,'0')} · {titles[id][index]}</option>)}</select></label><div className="sidebar-foot"><div className="local-badge"><span/> {tx(lang,'Your files stay on your device','ملفاتك تبقى على جهازك')}</div><p>{tx(lang,'Built for the way you make.','أدوات تناسب طريقة عملك.')}</p><div className="app-names" dir="ltr"><b>CorelDRAW</b><b>Ai</b><b>RDWorks</b></div><button className="guide-button" onClick={()=>setGuide(v=>!v)}><span>?</span>{tx(lang,'Workflow & file guide','دليل الاستخدام والملفات')}<Icon name="arrow" size={15}/></button></div></aside>

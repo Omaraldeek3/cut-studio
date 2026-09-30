@@ -1,0 +1,44 @@
+{
+  "name": "cut-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Free design, laser and print tools that run in the browser, in Arabic and English.",
+  "license": "MIT",
+  "author": "Omar Aldeek",
+  "repository": { "type": "git", "url": "https://github.com/Omaraldeek3/cut-studio.git" },
+  "homepage": "https://cutstudio.omardeek.tech",
+  "scripts": {
+    "predev": "node scripts/vendor-assets.mjs",
+    "dev": "next dev --hostname 127.0.0.1",
+    "prebuild": "node scripts/vendor-assets.mjs",
+    "build": "next build",
+    "start": "next start --hostname 127.0.0.1",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "test-pack": "jiti scripts/test-pack.ts"
+  },
+  "dependencies": {
+    "@countertype/clipper2-ts": "1.5.4-3.9a869ba",
+    "@fontsource-variable/manrope": "5.3.0",
+    "@fontsource/tajawal": "5.3.0",
+    "harfbuzzjs": "1.6.2",
+    "next": "16.3.5",
+    "onnxruntime-web": "1.30.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/three": "^0.186.0",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.3.5",
+    "jiti": "2.7.0",
+    "sharp": "0.35.4",
+    "typescript": "6.0.3"
+  }
+}

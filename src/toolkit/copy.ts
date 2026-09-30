@@ -9,6 +9,42 @@ export const groups:{id:string;title:[string,string];tools:ToolId[]}[]=[
   {id:'business',title:['Business','الأعمال'],tools:['quote']},
 ];
 export const groupOf=(id:ToolId)=>groups.find(g=>g.tools.includes(id))!;
+
+/** Each tool's address. English words in both languages, so a link stays
+ *  readable when it is copied into a chat or a search result. */
+export const slugs:Record<ToolId,string>={
+  trace:'image-to-vector',upscale:'ai-image-upscaler',lettering:'arabic-lettering',contour:'contour-offset',clean:'vector-cleanup',repeat:'resize-repeat',
+  nest:'nesting',box:'box-maker',gear:'gear-maker',hinge:'living-hinge',puzzle:'jigsaw-puzzle',tag:'keychains-tags',pattern:'grille-patterns',
+  engrave:'engraving-prep',testcard:'laser-test-card',kerf:'kerf-fit-test',ruler:'ruler-maker',tiles:'poster-tiling',sheet:'print-sheet',dpi:'dpi-calculator',quote:'job-quote',
+};
+export const toolFromSlug=(slug:string)=>toolIds.find(id=>slugs[id]===slug);
+/** The tool a bare locale address opens. */
+export const defaultTool:ToolId='trace';
+
+/** Titles for search results: what someone would type to find the tool. */
+export const seoTitles:Record<ToolId,[string,string]>={
+  trace:['Image to vector: trace logos and pictures to SVG and DXF','تحويل الصور إلى فيكتور SVG و DXF'],
+  upscale:['AI image upscaler for large-format print','تكبير الصور بالذكاء الاصطناعي للطباعة الكبيرة'],
+  lettering:['Arabic lettering to cut paths for laser and vinyl','تحويل الكتابة العربية إلى مسارات قص للّيزر والفينيل'],
+  contour:['Contour and offset for letters, logos and stickers','كونتور وإزاحة للحروف والشعارات والستيكرات'],
+  clean:['Repair SVG and DXF for cutting: delete overlap, join gaps','إصلاح ملفات SVG و DXF للقص: حذف التداخل وربط الفجوات'],
+  repeat:['Resize and repeat artwork in millimetres','تغيير المقاس وتكرار التصميم بالملليمتر'],
+  nest:['Free nesting for laser cutting and CNC','ترتيب القطع للقص بالليزر والـCNC مجاناً'],
+  box:['Laser box maker with finger joints, lids and drawers','صانع صناديق الليزر بالتعشيق والأغطية والأدراج'],
+  gear:['Gear maker: involute spur gears and meshing pairs','صانع التروس: تروس إنفوليوت وأزواج متعشّقة'],
+  hinge:['Living hinge generator for plywood and MDF','مولّد المفصل المرن للخشب والـMDF'],
+  puzzle:['Jigsaw puzzle generator for laser cutting','مولّد البازل للقص بالليزر'],
+  tag:['Keychain and tag maker with Arabic text','صانع الميداليات والبطاقات بالنص العربي'],
+  pattern:['Grille and ventilation pattern generator','مولّد نقوش التهوية والشبكات'],
+  engrave:['Photo engraving prep with dithering for CO2 and fibre','تجهيز الصور للحفر بالليزر مع التنقيط'],
+  testcard:['Laser power and speed test card','بطاقة اختبار القوة والسرعة لليزر'],
+  kerf:['Kerf and fit test coupon for laser cutting','عينة اختبار التعشيق والكيرف للقص بالليزر'],
+  ruler:['Ruler maker for laser engraving','صانع المساطر للحفر بالليزر'],
+  tiles:['Poster tiling: split a large print into panels','تقسيم البوستر إلى ألواح للطباعة الكبيرة'],
+  sheet:['Print sheet for stickers, labels and sublimation','ورقة طباعة للستيكرات والملصقات والسابليميشن'],
+  dpi:['DPI calculator for engraving and print','حاسبة الدقة DPI للحفر والطباعة'],
+  quote:['Laser and print job quote calculator','حاسبة عرض سعر لأعمال الليزر والطباعة'],
+};
 export const titles:Record<ToolId,[string,string]>={nest:['Material nesting','ترتيب القطع'],trace:['Image to vector','تحويل صورة إلى فيكتور'],clean:['Vector cleanup','تنظيف الفيكتور'],repeat:['Resize & repeat','المقاس والتكرار'],quote:['Job quote','عرض السعر'],kerf:['Fit test','اختبار التعشيق'],engrave:['Engraving prep','تجهيز صور الحفر'],box:['Box maker','صانع الصناديق'],
   upscale:['AI upscaler','تكبير الصور بالذكاء الاصطناعي'],tiles:['Poster tiling','تقسيم البوستر'],contour:['Contour & offset','الكونتور والإزاحة'],lettering:['Arabic lettering','الكتابة العربية'],sheet:['Print sheet','ورقة الطباعة'],
   hinge:['Living hinge','المفصل المرن'],gear:['Gear maker','صانع التروس'],puzzle:['Jigsaw puzzle','صانع البازل'],tag:['Tags & keychains','الميداليات والبطاقات'],pattern:['Grille patterns','نقوش التهوية'],testcard:['Power & speed test','بطاقة اختبار القوة والسرعة'],ruler:['Ruler maker','صانع المساطر'],dpi:['Resolution & DPI','الدقة والـDPI']};

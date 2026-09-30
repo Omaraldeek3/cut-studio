@@ -1,0 +1,119 @@
+import { test, expect, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
+import { PngStream } from "../src/toolkit/upscale-core";
+
+/** A small gradient picture with a dark disc, as PNG bytes. */
+async function picture(width: number, height: number, alpha = false) {
+  const png = new PngStream(width, height, alpha ? 4 : 3);
+  const channels = alpha ? 4 : 3;
+  const data = new Uint8Array(width * height * channels);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const i = (y * width + x) * channels, disc = Math.hypot(x - width / 2, y - height / 2) < Math.min(width, height) / 3;
+    data[i] = disc ? 30 : (x * 255) / width; data[i + 1] = disc ? 30 : (y * 255) / height; data[i + 2] = disc ? 40 : 180;
+    if (alpha) data[i + 3] = disc ? 255 : 0;
+  }
+  await png.addRows(data);
+  return Buffer.from(await (await png.finish()).arrayBuffer());
+}
+
+async function openTool(page: Page, name: string) {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/en/nesting");
+  await page.getByRole("link", { name, exact: true }).click();
+  return errors;
+}
+
+test("the AI upscaler enlarges a picture and saves a JPEG with its size", async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await openTool(page, "AI upscaler");
+  await page.getByLabel("Import image").setInputFiles({ name: "small.png", mimeType: "image/png", buffer: await picture(96, 64) });
+  await page.getByRole("radio", { name: /Graphics/ }).click();
+  await page.getByRole("button", { name: "2×", exact: true }).click();
+  await page.getByRole("button", { name: /Enlarge and save/ }).click();
+  await expect(page.getByText("Saved file ready", { exact: true })).toBeVisible({ timeout: 200_000 });
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Save the file", exact: true }).click();
+  const bytes = await readFile((await (await download).path())!);
+  expect([bytes[0], bytes[1]]).toEqual([0xff, 0xd8]);
+  // Walk to the frame header for the picture's size.
+  let at = 2;
+  while (at < bytes.length && bytes[at + 1] !== 0xc0) at += 2 + bytes.readUInt16BE(at + 2);
+  expect(bytes.readUInt16BE(at + 5)).toBe(128);
+  expect(bytes.readUInt16BE(at + 7)).toBe(192);
+  expect(errors).toEqual([]);
+});
+
+test("a small picture is cleaned up by the AI before it is traced", async ({ page }) => {
+  test.setTimeout(240_000);
+  const errors = await openTool(page, "Image to vector");
+  await page.getByLabel("Import image").setInputFiles({ name: "small.png", mimeType: "image/png", buffer: await picture(120, 90) });
+  await expect(page.getByText(/^AI clean-up \d+%$/)).toBeVisible();
+  await expect(page.getByText("Vector ready", { exact: true })).toBeVisible({ timeout: 200_000 });
+  // Traced from the AI enlargement, four times the pixels on each side.
+  await expect(page.locator(".preview-bottom")).toContainText("480 × 360 px traced");
+  await page.getByText("AI clean-up before tracing", { exact: true }).click();
+  await expect(page.locator(".preview-bottom")).toContainText("120 × 90 px traced", { timeout: 30_000 });
+  expect(errors).toEqual([]);
+});
+
+test("poster tiling splits a print into panels and saves one", async ({ page }) => {
+  const errors = await openTool(page, "Poster tiling");
+  await page.getByLabel("Import image").setInputFiles({ name: "front.png", mimeType: "image/png", buffer: await picture(600, 300) });
+  await page.getByLabel("Or exact width").fill("160");
+  await expect(page.locator(".tl-list li")).toHaveCount(4);
+  const download = page.waitForEvent("download");
+  await page.locator(".tl-list li").first().getByRole("button").click();
+  expect((await download).suggestedFilename()).toBe("front-panel-01-of-04.jpg");
+  expect(errors).toEqual([]);
+});
+
+test("a sticker gets a cut line and a print-and-cut PDF", async ({ page }) => {
+  const errors = await openTool(page, "Contour & offset");
+  await page.getByRole("radio", { name: /Sticker/ }).click();
+  await page.getByLabel("Import image").setInputFiles({ name: "badge.png", mimeType: "image/png", buffer: await picture(200, 200, true) });
+  await expect(page.getByText("Outline ready", { exact: true })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Print & cut PDF", exact: true }).click();
+  const pdf = (await readFile((await (await download).path())!)).toString("latin1");
+  expect(pdf).toContain("/Separation /CutContour");
+  expect(pdf).toContain("/Subtype /Image");
+  expect(errors).toEqual([]);
+});
+
+test("Arabic lettering loads its font and exports joined outlines", async ({ page }) => {
+  const errors = await openTool(page, "Arabic lettering");
+  await expect(page.getByText("Ready to cut", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.locator(".lt-text").fill("مطعم الريّان");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export DXF", exact: true }).click();
+  const dxf = (await readFile((await (await download).path())!)).toString();
+  expect(dxf).toContain("POLYLINE");
+  expect(errors).toEqual([]);
+});
+
+test("the print sheet lays out copies and saves a PDF", async ({ page }) => {
+  const errors = await openTool(page, "Print sheet");
+  await page.getByLabel("Import image").setInputFiles({ name: "label.png", mimeType: "image/png", buffer: await picture(100, 100, true) });
+  await expect(page.locator(".status-pill")).toContainText("on the sheet");
+  await page.getByRole("button", { name: "Shape", exact: true }).click();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: /Save the sheet/ }).click();
+  const pdf = (await readFile((await (await download).path())!)).toString("latin1");
+  expect(pdf.match(/\/Im0 Do/g)!.length).toBeGreaterThan(4);
+  expect(pdf).toContain("/Separation /CutContour");
+  expect(errors).toEqual([]);
+});
+
+test("every workshop tool opens without an error", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/ar/nesting");
+  const buttons = page.locator(".sidebar nav button");
+  const count = await buttons.count();
+  for (let i = 0; i < count; i++) {
+    await buttons.nth(i).click();
+    await expect(page.locator("h1")).toBeVisible();
+  }
+  expect(errors).toEqual([]);
+});

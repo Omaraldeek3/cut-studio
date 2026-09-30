@@ -1,0 +1,50 @@
+{
+  "source": "Official MSYS2 mingw64 packages",
+  "packages": [
+    {
+      "package": "mingw-w64-x86_64-libcdr",
+      "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-libcdr-0.1.9-1-any.pkg.tar.zst",
+      "sha256": "ae41ff485678b47cf14d1d82ad318065684850cb61fbb7781677606f905b4011"
+    },
+    {
+      "package": "mingw-w64-x86_64-librevenge",
+      "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-librevenge-0.0.6-1-any.pkg.tar.zst",
+      "sha256": "836647013a9191ba3d9271f78825ac6985c8e7a811b87e8487e7df927471dba2"
+    },
+    {
+      "package": "mingw-w64-x86_64-icu",
+      "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-icu-78.3-4-any.pkg.tar.zst",
+      "sha256": "8486a018aca2e56d1fcd2eed2069011f2e1da02e03af72b38916ee06cbe7203f"
+    },
+    {
+      "package": "mingw-w64-x86_64-lcms2",
+      "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-lcms2-2.19.1-1-any.pkg.tar.zst",
+      "sha256": "f9858d910df27d3762590e5da75e2589f9f0216ebbf1b6d58bdddbab3d4f35ad"
+    },
+    {
+      "package": "mingw-w64-x86_64-zlib",
+      "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
+      "sha256": "9e75842a070ba648e986e12424e1c92c9d7d77200e85f6a34eeb600819f2e694"
+    },
+    {
+      "package": "mingw-w64-x86_64-gcc-libs",
+      "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-gcc-libs-16.2.0-3-any.pkg.tar.zst",
+      "sha256": "f8e25ea67bb796e7f65550f0dca9fce4cdde8aaa3dadafe4d13c6a8233c8de26"
+    },
+    {
+      "package": "mingw-w64-x86_64-libwinpthread",
+      "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-libwinpthread-14.0.0.r375.g9c1abbbf5-1-any.pkg.tar.zst",
+      "sha256": "1d0ed7fda332a5c879de210f3d72c75fa1f3df7cc63dd951e763dec8eb02c1ee"
+    },
+    {
+      "package": "mingw-w64-x86_64-libiconv",
+      "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
+      "sha256": "21e334d0911f25de75d3e18e0697648bcecfa9658256d600cad0827d719c2f35"
+    },
+    {
+      "package": "mingw-w64-x86_64-bzip2",
+      "url": "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-bzip2-1.0.8-4-any.pkg.tar.zst",
+      "sha256": "123768f30ae14ba654a6feb70f8526146a331bc85f831a91a549ffb3f6cbffc7"
+    }
+  ]
+}

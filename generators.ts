@@ -1,4 +1,4 @@
-import type { Contour, Drawing, Point, Shape } from './types';
+import type { Contour, Drawing, Pen, Point, Shape } from './types';
 import { strokeText, textWidth } from './box/font';
 import { unionContours } from './vector-ops';
 
@@ -342,6 +342,29 @@ export function steps(min: number, max: number, count: number) {
   return Array.from({ length: count }, (_, i) => Math.round(min + ((max - min) * i) / (count - 1)));
 }
 
+/** LightBurn has 30 layers; RDWorks makes one per colour. */
+export const MAX_TEST_SQUARES = 30;
+
+/** The RGB of an AutoCAD colour index, the way CAD and cutting programs show it. */
+export function aciRgb(i: number) {
+  const base: Record<number, string> = { 1: '#ff0000', 2: '#ffff00', 3: '#00ff00', 4: '#00ffff', 5: '#0000ff', 6: '#ff00ff', 7: '#000000', 8: '#808080', 9: '#c0c0c0' };
+  if (i < 10) return base[i] ?? '#000000';
+  if (i >= 250) { const v = Math.round(51 + ((i - 250) * 204) / 5); return `#${v.toString(16).padStart(2, '0').repeat(3)}`; }
+  const hue = Math.floor((i - 10) / 10) * 15, step = (i - 10) % 10;
+  const value = [1, 1, 0.8, 0.8, 0.6, 0.6, 0.5, 0.5, 0.3, 0.3][step], saturation = step % 2 ? 0.5 : 1;
+  const f = (n: number) => { const k = (n + hue / 60) % 6; return Math.round(255 * value * (1 - saturation * Math.max(0, Math.min(k, 4 - k, 1)))); };
+  return `#${[f(5), f(3), f(1)].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** Colour indices for the test squares: clearly different hues and shades,
+ *  never red (cut) or blue (engraved labels). */
+const TEST_ACI = [2, 3, 4, 6, 30, 50, 70, 90, 110, 130, 150, 170, 190, 210, 230, 14, 34, 54, 74, 94, 114, 134, 154, 174, 194, 214, 234, 8, 9, 40];
+
+function testPen(index: number, power: number, speed: number): Pen {
+  const aci = TEST_ACI[index % TEST_ACI.length];
+  return { name: `${String(index + 1).padStart(2, '0')}-P${power}-S${speed}`, aci, rgb: aciRgb(aci) };
+}
+
 export function testCardDrawing(o: TestCardOptions): Drawing {
   const columns = Math.round(check(o.columns, 1, 12, 'Columns'));
   const rows = Math.round(check(o.rows, 1, 12, 'Rows'));
@@ -356,10 +379,16 @@ export function testCardDrawing(o: TestCardOptions): Drawing {
     const text = String(speed), x = left + i * pitch + (o.cell - textWidth(text, label * 0.8)) / 2;
     contours.push(...engraveText(text, label * 0.8, x, top - 7));
   });
-  steps(o.powerMin, o.powerMax, rows).forEach((power, j) => {
+  const speeds = steps(o.speedMin, o.speedMax, columns), powers = steps(o.powerMin, o.powerMax, rows);
+  if (columns * rows > MAX_TEST_SQUARES) throw new Error(`Use at most ${MAX_TEST_SQUARES} squares: cutting software gives each colour its own layer, and LightBurn has 30.`);
+  powers.forEach((power, j) => {
     const text = String(power), y = top + j * pitch + (o.cell - label * 0.8) / 2;
     contours.push(...engraveText(text, label * 0.8, left - 4 - textWidth(text, label * 0.8), y));
-    for (let i = 0; i < columns; i++) contours.push(closed(roundedRect(left + i * pitch, top + j * pitch, o.cell, o.cell, 0), 'engrave'));
+    for (let i = 0; i < columns; i++) {
+      // Each square has its own colour, so the cutting software gives it its own layer.
+      const pen = testPen(j * columns + i, powers[j], speeds[i]);
+      contours.push({ ...closed(roundedRect(left + i * pitch, top + j * pitch, o.cell, o.cell, 0), 'engrave'), pen });
+    }
   });
   return { width, height, shapes: [shape('test-card', 'Material test card', contours)] };
 }

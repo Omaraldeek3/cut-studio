@@ -10,7 +10,7 @@ import { download } from './export';
 import {
   defaultGear, defaultHinge, defaultJob, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
   duration, gearDrawing, gearGeometry, hingeDrawing, jobEstimate, pathStats, patternDrawing, printSize, puzzleDrawing,
-  resolution, rulerDrawing, steps, tagDrawing, testCardDrawing,
+  resolution, rulerDrawing, steps, tagDrawing, testCardDrawing, MAX_TEST_SQUARES,
   type GearOptions, type HingeOptions, type JobOptions, type PatternKind, type PatternOptions, type PuzzleOptions,
   type RulerOptions, type TagOptions, type TagShape, type TestCardOptions,
 } from './generators';
@@ -33,9 +33,9 @@ function useOptions<T extends object>(initial: T) {
 
 const metres = (mm: number) => (mm / 1000).toFixed(2);
 
-function Frame({ lang, built, name, caption, children, stats, tip, onNest }: {
+function Frame({ lang, built, name, caption, children, stats, tip, onNest, below, exportsExtra }: {
   lang: Language; built: Built; name: string; caption: string; children: React.ReactNode;
-  stats?: React.ReactNode; tip?: string; onNest?: (d: Drawing) => void;
+  stats?: React.ReactNode; tip?: string; onNest?: (d: Drawing) => void; below?: React.ReactNode; exportsExtra?: React.ReactNode;
 }) {
   const { drawing, error } = built;
   const size = drawing ? `${drawing.width.toFixed(1)} × ${drawing.height.toFixed(1)}` : '—';
@@ -56,9 +56,10 @@ function Frame({ lang, built, name, caption, children, stats, tip, onNest }: {
           {stats ?? <Stat label={tx(lang, 'Engrave length', 'طول الحفر')} value={lengths ? metres(lengths.engrave) : '—'} unit="m"/>}
         </div>
         {tip && <div className="tip-card"><span className="tip-mark">i</span><p>{tip}</p></div>}
+        {below}
       </div>
     </div>
-    <Exports drawing={drawing} name={name} lang={lang} extra={nest}/>
+    <Exports drawing={drawing} name={name} lang={lang} extra={<>{exportsExtra}{nest}</>}/>
   </>;
 }
 
@@ -217,13 +218,22 @@ export function TestCardWorkspace({ lang }: { lang: Language }) {
   const built = useMemo(() => build(() => testCardDrawing(o)), [o]);
   const speeds = steps(o.speedMin, o.speedMax, Math.max(1, Math.round(o.columns) || 1));
   const powers = steps(o.powerMin, o.powerMax, Math.max(1, Math.round(o.rows) || 1));
+  const pens = built.drawing ? built.drawing.shapes.flatMap(s => s.contours).flatMap(c => (c.pen ? [c.pen] : [])) : [];
+  const settingsOf = (name: string) => name.match(/P(\d+)-S(\d+)/)?.slice(1) ?? ['', ''];
+  const sheet = () => download(['Layer,Colour (ACI),Colour (RGB),Power (%),Speed (mm/s)', ...pens.map(p => [p.name, p.aci, p.rgb, ...settingsOf(p.name)].join(','))].join('\n') + '\n', `test-card-${o.columns}x${o.rows}-settings.csv`, 'text/csv');
   return <Frame lang={lang} built={built} name={`test-card-${o.columns}x${o.rows}`}
-    caption={tx(lang, 'Squares and labels engrave · the border cuts', 'المربعات والأرقام للحفر · الإطار للقص')}
+    caption={tx(lang, 'Each square has its own colour · labels engrave · the border cuts', 'لكل مربع لونه · الأرقام للحفر · الإطار للقص')}
     stats={<Stat label={tx(lang, 'Squares', 'المربعات')} value={Math.round(o.columns) * Math.round(o.rows) || '—'}/>}
-    tip={tx(lang, 'In RDWorks, give each square its own layer and set the speed of its column and the power of its row. Afterwards, the darkest clean square is your setting.', 'في RDWorks اجعل لكل مربع طبقته، وأعطه سرعة عموده وقوة صفه. بعد الحفر، أغمق مربع نظيف هو إعدادك.')}>
+    tip={tx(lang, 'Import the DXF or SVG: RDWorks and LightBurn make one layer per colour. Set each layer to Scan with the power and speed in the table below (the layer names say them too). The darkest clean square is your setting.', 'استورد ملف DXF أو SVG: يصنع RDWorks و LightBurn طبقة لكل لون. اجعل كل طبقة على وضع Scan بالقوة والسرعة المكتوبة في الجدول أدناه (واسم الطبقة يذكرهما أيضاً). أغمق مربع نظيف هو إعدادك.')}
+    exportsExtra={<button className="button secondary" disabled={!pens.length} onClick={sheet}><Icon name="download" size={16}/>{tx(lang, 'Layer settings (CSV)', 'إعدادات الطبقات (CSV)')}</button>}
+    below={pens.length ? <div className="pen-table" role="table" aria-label={tx(lang, 'Layer settings', 'إعدادات الطبقات')}>
+      <div className="pen-row pen-head" role="row"><span role="columnheader">{tx(lang, 'Colour', 'اللون')}</span><span role="columnheader">{tx(lang, 'Power', 'القوة')}</span><span role="columnheader">{tx(lang, 'Speed', 'السرعة')}</span></div>
+      {pens.map(p => { const [power, speed] = settingsOf(p.name); return <div className="pen-row" role="row" key={p.name}><span role="cell"><i style={{ background: p.rgb }}/>{p.name.slice(0, 2)}</span><span role="cell" dir="ltr">{power}%</span><span role="cell" dir="ltr">{speed} mm/s</span></div>; })}
+    </div> : null}>
     <Section title={tx(lang, 'Grid', 'الشبكة')} number="01">
       <div className="field-pair"><NumberField label={tx(lang, 'Speed steps', 'درجات السرعة')} value={o.columns} onChange={set('columns')} min={1} max={12}/><NumberField label={tx(lang, 'Power steps', 'درجات القوة')} value={o.rows} onChange={set('rows')} min={1} max={12}/></div>
       <div className="field-pair"><NumberField label={tx(lang, 'Square size', 'مقاس المربع')} value={o.cell} onChange={set('cell')} min={4} max={40} unit="mm"/><NumberField label={tx(lang, 'Gap', 'الفراغ')} value={o.gap} onChange={set('gap')} min={1} max={20} unit="mm"/></div>
+      <p className="micro">{tx(lang, `Up to ${MAX_TEST_SQUARES} squares, one layer each.`, `حتى ${MAX_TEST_SQUARES} مربعاً، لكل مربع طبقته.`)}</p>
     </Section>
     <Section title={tx(lang, 'Ranges', 'المدى')} number="02">
       <div className="field-pair"><NumberField label={tx(lang, 'Speed from', 'السرعة من')} value={o.speedMin} onChange={set('speedMin')} min={1} unit="mm/s"/><NumberField label={tx(lang, 'to', 'إلى')} value={o.speedMax} onChange={set('speedMax')} min={1} unit="mm/s"/></div>

@@ -1,4 +1,4 @@
-import type { Contour, Drawing, Shape } from './types';
+import type { Contour, Drawing, Pen, Shape } from './types';
 import type { Curve, Seg } from './path';
 import { curveToSvg } from './path';
 import { fitPolyline } from './fit';
@@ -18,13 +18,20 @@ function labelShapes(d:Labelled):Shape[]{
 }
 export function toSvg(d:Labelled){
   const shapes=[...d.shapes,...labelShapes(d)];
-  const paths=(layer:'cut'|'engrave',colour:string)=>shapes.filter(s=>s.contours.some(c=>engraved(c)===(layer==='engrave'))).map(s=>`<path d="${fileData(s,layer)}" fill="none" stroke="${colour}" stroke-width="0.05"/>`).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${n(d.width)}mm" height="${n(d.height)}mm" viewBox="0 0 ${n(d.width)} ${n(d.height)}">\n${paths('cut','#ff0000')}\n${paths('engrave','#0000ff')}\n</svg>`;
+  const paths=(layer:'cut'|'engrave',colour:string)=>shapes.filter(s=>s.contours.some(c=>!c.pen&&engraved(c)===(layer==='engrave'))).map(s=>`<path d="${fileData({...s,contours:s.contours.filter(c=>!c.pen)},layer)}" fill="none" stroke="${colour}" stroke-width="0.05"/>`).join('\n');
+  // Pen contours are written one colour at a time; closed ones are filled, as they engrave by scan.
+  const pens=new Map<string,{pen:Pen;contours:Contour[]}>();
+  for(const s of shapes)for(const c of s.contours)if(c.pen){const e=pens.get(c.pen.name);if(e)e.contours.push(c);else pens.set(c.pen.name,{pen:c.pen,contours:[c]});}
+  const penPaths=[...pens.values()].map(({pen,contours})=>`<path id="${pen.name}" d="${contours.map(c=>curveToSvg(contourCurve(c),c.closed)).join(' ')}" fill="${contours.every(c=>c.closed)?pen.rgb:'none'}" stroke="${pen.rgb}" stroke-width="0.05"/>`).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${n(d.width)}mm" height="${n(d.height)}mm" viewBox="0 0 ${n(d.width)} ${n(d.height)}">\n${paths('cut','#ff0000')}\n${paths('engrave','#0000ff')}${penPaths?'\n'+penPaths:''}\n</svg>`;
 }
 export function toDxf(d:Labelled){
-  const pairs:(string|number)[]=[0,'SECTION',2,'HEADER',9,'$ACADVER',1,'AC1009',9,'$INSUNITS',70,4,9,'$MEASUREMENT',70,1,0,'ENDSEC',0,'SECTION',2,'TABLES',0,'TABLE',2,'LAYER',70,2,0,'LAYER',2,'CUT',70,0,62,1,6,'CONTINUOUS',0,'LAYER',2,'ENGRAVE',70,0,62,5,6,'CONTINUOUS',0,'ENDTAB',0,'ENDSEC',0,'SECTION',2,'ENTITIES'];
+  const pens=new Map<string,Pen>();
+  for(const s of d.shapes)for(const c of s.contours)if(c.pen)pens.set(c.pen.name,c.pen);
+  const penLayers=[...pens.values()].flatMap(p=>[0,'LAYER',2,p.name,70,0,62,p.aci,6,'CONTINUOUS']);
+  const pairs:(string|number)[]=[0,'SECTION',2,'HEADER',9,'$ACADVER',1,'AC1009',9,'$INSUNITS',70,4,9,'$MEASUREMENT',70,1,0,'ENDSEC',0,'SECTION',2,'TABLES',0,'TABLE',2,'LAYER',70,2+pens.size,0,'LAYER',2,'CUT',70,0,62,1,6,'CONTINUOUS',0,'LAYER',2,'ENGRAVE',70,0,62,5,6,'CONTINUOUS',...penLayers,0,'ENDTAB',0,'ENDSEC',0,'SECTION',2,'ENTITIES'];
   for(const s of [...d.shapes,...labelShapes(d)])for(const c of s.contours){
-    const layer=engraved(c)?'ENGRAVE':'CUT';
+    const layer=c.pen?c.pen.name:engraved(c)?'ENGRAVE':'CUT';
     const curve=contourCurve(c);
     // R12 has no Béziers: cubics become arcs within 0.01 mm.
     const segs:Seg[]=[];let at=curve.start;

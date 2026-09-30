@@ -17,7 +17,7 @@ export type WorkerRequest =
   | { type: 'source'; width: number; height: number; data: Uint8ClampedArray }
   | { type: 'model'; model: UpscaleModel; gpu: boolean }
   | { type: 'probe'; x: number; y: number }
-  | { type: 'run'; width: number; height: number; format: 'jpeg' | 'png' | 'raw'; quality: number; dpi: number; previewWidth: number };
+  | { type: 'run'; width: number; height: number; format: 'jpeg' | 'png' | 'raw'; quality: number; dpi: number; previewWidth: number; sharpen?: number };
 
 let ort: typeof Ort | null = null;
 let session: Ort.InferenceSession | null = null;
@@ -148,11 +148,21 @@ async function run(request: Extract<WorkerRequest, { type: 'run' }>) {
     for (const tile of row) {
       const out = await infer(tileInput(data, width, height, tile, SIZE, PAD));
       const w = tile.width * FACTOR;
+      // Sharpening is an unsharp mask on the model's output, read from the
+      // tile's padded margin so neighbouring tiles meet without a seam.
+      const amount = Math.max(0, Math.min(1.5, (request.sharpen ?? 0) / 100 * 1.5));
+      const value = (c: number, s: number) => {
+        const v = out[c * plane + s];
+        if (!amount) return v;
+        const o = c * plane + s;
+        const blur = (out[o - OUT - 1] + out[o - OUT] + out[o - OUT + 1] + out[o - 1] + v + out[o + 1] + out[o + OUT - 1] + out[o + OUT] + out[o + OUT + 1]) / 9;
+        return v + amount * (v - blur);
+      };
       for (let oy = 0; oy < bandRows; oy++) {
         const s0 = (PAD * FACTOR + oy) * OUT + PAD * FACTOR, d0 = (oy * W4 + tile.x * FACTOR) * channels;
         for (let ox = 0; ox < w; ox++) {
           const s = s0 + ox, d = d0 + ox * channels;
-          band[d] = clamp(out[s]); band[d + 1] = clamp(out[plane + s]); band[d + 2] = clamp(out[2 * plane + s]);
+          band[d] = clamp(value(0, s)); band[d + 1] = clamp(value(1, s)); band[d + 2] = clamp(value(2, s));
         }
       }
       done++;

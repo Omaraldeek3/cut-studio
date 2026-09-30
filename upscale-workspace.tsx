@@ -67,6 +67,19 @@ function PixelsCanvas({ width, height, data, label }: { width: number; height: n
   return <canvas ref={canvas} className="up-crop" role="img" aria-label={label} />;
 }
 
+/** The original and the result on top of each other, split where the slider is. */
+function Compare({ url, preview, lang }: { url: string; preview: { width: number; height: number; data: Uint8ClampedArray }; lang: Language }) {
+  const [split, setSplit] = useState(50);
+  return <div className="up-compare-slider" style={{ aspectRatio: `${preview.width} / ${preview.height}`, ['--ar' as string]: preview.width / preview.height }}>
+    {/* eslint-disable-next-line @next/next/no-img-element -- a local object URL, not an optimisable asset */}
+    <img src={url} alt={tx(lang, 'Original picture', 'الصورة الأصلية')} />
+    <div className="up-after" style={{ clipPath: `inset(0 0 0 ${split}%)` }}><PixelsCanvas width={preview.width} height={preview.height} data={preview.data} label={tx(lang, 'Enlarged result', 'الناتج المكبّر')} /></div>
+    <span className="up-divider" style={{ left: `${split}%` }} aria-hidden="true" />
+    <span className="up-tag up-tag-before">{tx(lang, 'Before', 'قبل')}</span><span className="up-tag up-tag-after">{tx(lang, 'After', 'بعد')}</span>
+    <input type="range" min={0} max={100} value={split} onChange={e => setSplit(+e.target.value)} aria-label={tx(lang, 'Move to compare before and after', 'حرّك للمقارنة بين قبل وبعد')} />
+  </div>;
+}
+
 export function UpscaleWorkspace({ lang }: { lang: Language }) {
   const [source, setSource] = useState<Source | null>(null);
   const [loading, setLoading] = useState(false);
@@ -77,6 +90,7 @@ export function UpscaleWorkspace({ lang }: { lang: Language }) {
   const [scale, setScale] = useState(4);
   const [format, setFormat] = useState<'jpeg' | 'png'>('jpeg');
   const [quality, setQuality] = useState(95);
+  const [sharpen, setSharpen] = useState(0);
   const [backend, setBackend] = useState<'webgpu' | 'wasm' | ''>('');
   const [probe, setProbe] = useState<Probe | null>(null);
   const [probing, setProbing] = useState(false);
@@ -173,7 +187,7 @@ export function UpscaleWorkspace({ lang }: { lang: Language }) {
   const start = () => {
     if (!source || !validScale || tooBig) return;
     setRunning(true); setError(''); setResult(null); setProgress({ done: 0, total: 1, elapsed: 0 }); setPreview(null);
-    send({ type: 'run', width: outW, height: outH, format, quality, dpi, previewWidth: 1400 }, message => {
+    send({ type: 'run', width: outW, height: outH, format, quality, dpi, previewWidth: 1400, sharpen }, message => {
       if (message.type === 'progress') { setProgress(message as unknown as { done: number; total: number; elapsed: number }); return false; }
       if (message.type === 'preview') { setPreview(message as unknown as { width: number; height: number; data: Uint8ClampedArray }); return false; }
       if (message.type !== 'done') return false;
@@ -250,6 +264,8 @@ export function UpscaleWorkspace({ lang }: { lang: Language }) {
           <div className="preset-row">{[2, 3, 4, 6, 8].map(value => <button key={value} className={scale === value ? 'selected' : ''} onClick={() => setScale(value)} dir="ltr">{value}×</button>)}</div>
           <NumberField label={tx(lang, 'Factor', 'المعامل')} value={scale} onChange={setScale} min={1} max={8} step={0.1} unit="×" />
           {scale > 4 && <p className="micro">{tx(lang, 'The AI draws detail up to 4×; the rest is a smooth enlargement of its result.', 'الذكاء الاصطناعي يرسم التفاصيل حتى ٤×؛ ما بعدها تكبير ناعم لنتيجته.')}</p>}
+          <Range label={tx(lang, 'Extra sharpness', 'حدّة إضافية')} value={sharpen} min={0} max={100} onChange={setSharpen} />
+          <p className="micro">{tx(lang, 'Leave at 0 for photos of people. Raise it for text, logos and signs that will be seen from far away.', 'اتركها على ٠ لصور الأشخاص. ارفعها للنصوص والشعارات واللافتات التي تُرى من بعيد.')}</p>
           <label className="field"><span>{tx(lang, 'File', 'الملف')}</span>
             <select value={format} onChange={e => setFormat(e.target.value as 'jpeg' | 'png')}>
               <option value="jpeg">{tx(lang, 'JPEG · small, for printing', 'JPEG · حجم صغير للطباعة')}</option>
@@ -277,10 +293,16 @@ export function UpscaleWorkspace({ lang }: { lang: Language }) {
           <span className="micro">{backend === 'webgpu' ? tx(lang, 'Running on the graphics card', 'يعمل على كرت الشاشة') : backend === 'wasm' ? tx(lang, 'Running on the processor (slower)', 'يعمل على المعالج (أبطأ)') : tx(lang, 'Processed on this computer', 'المعالجة على هذا الجهاز')}</span>
         </div>
 
+        {!result && <ol className="up-steps">
+          <li className={source ? 'done' : ''}><b>{tx(lang, 'Your picture', 'صورتك')}</b><span>{tx(lang, 'Drop, paste or choose it. It stays on this computer.', 'اسحبها أو الصقها أو اخترها. تبقى على جهازك.')}</span></li>
+          <li className={source ? 'done' : ''}><b>{tx(lang, 'What it shows and how big you print it', 'نوعها ومقاس طباعتها')}</b><span>{tx(lang, 'The planner works out how much to enlarge it for the distance people will stand.', 'يحسب المخطط كم تحتاج من تكبير حسب المسافة التي يقف منها الناس.')}</span></li>
+          <li className={probe ? 'done' : ''}><b>{tx(lang, 'Click the picture to test', 'اضغط على الصورة للتجربة')}</b><span>{tx(lang, 'A small piece is enlarged in seconds, next to an ordinary enlargement, so you see the difference before waiting.', 'يُكبَّر جزء صغير في ثوانٍ بجانب تكبير عادي، فترى الفرق قبل الانتظار.')}</span></li>
+          <li><b>{tx(lang, 'Enlarge and save', 'كبّر واحفظ')}</b><span>{tx(lang, 'The whole picture is enlarged piece by piece; then drag across it to compare before and after.', 'تُكبَّر الصورة كاملة قطعةً قطعة؛ ثم اسحب فوقها للمقارنة بين قبل وبعد.')}</span></li>
+        </ol>}
         <div className="preview-surface">
-          <div className="preview-top"><span><Icon name="upscale" size={15} /> {preview ? tx(lang, 'RESULT', 'الناتج') : tx(lang, 'ORIGINAL', 'الأصل')}</span><b dir="ltr">{source ? `${source.raster.width} × ${source.raster.height} → ${outW} × ${outH} px` : '—'}</b></div>
+          <div className="preview-top"><span><Icon name="upscale" size={15} /> {preview ? tx(lang, 'BEFORE · AFTER', 'قبل · بعد') : tx(lang, 'ORIGINAL', 'الأصل')}</span><b dir="ltr">{source ? `${source.raster.width} × ${source.raster.height} → ${outW} × ${outH} px` : '—'}</b></div>
           <div className="up-stage">
-            {preview ? <PixelsCanvas width={preview.width} height={preview.height} data={preview.data} label={tx(lang, 'Enlarged result', 'الناتج المكبّر')} />
+            {preview && source ? <Compare url={source.url} preview={preview} lang={lang} />
               : source ? <button className="up-pick" onClick={pick} disabled={running} aria-label={tx(lang, 'Preview a detail here', 'عاين هذا الجزء')}>
                   {/* eslint-disable-next-line @next/next/no-img-element -- a local object URL, not an optimisable asset */}
                   <img src={source.url} alt={tx(lang, 'Original picture', 'الصورة الأصلية')} className="up-source" />

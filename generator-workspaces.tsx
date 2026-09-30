@@ -9,7 +9,6 @@ const Gear3D = dynamic(() => import('./gear3d'), { ssr: false });
 import type { Drawing } from './types';
 import { tx, type Language } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Section, Stat, Toggle, VectorPreview } from './ui';
-import { VectorInput } from './vector-input';
 import { download } from './export';
 import {
   defaultGear, defaultHinge, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,

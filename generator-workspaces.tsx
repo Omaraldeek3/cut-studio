@@ -2,6 +2,10 @@
 import { useEffect, useId, useMemo, useState } from 'react';
 import type * as HB from 'harfbuzzjs';
 import { builtInFonts, textLoops, WEIGHTS, type FontChoice } from './fonts';
+import dynamic from 'next/dynamic';
+import type { SpinPart } from './gear3d';
+
+const Gear3D = dynamic(() => import('./gear3d'), { ssr: false });
 import type { Drawing } from './types';
 import { tx, type Language } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Section, Stat, Toggle, VectorPreview } from './ui';
@@ -9,7 +13,7 @@ import { VectorInput } from './vector-input';
 import { download } from './export';
 import {
   defaultGear, defaultHinge, defaultJob, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
-  duration, gearDrawing, gearGeometry, hingeDrawing, jobEstimate, pathStats, patternDrawing, printSize, puzzleDrawing,
+  centreDistance, duration, gearDrawing, gearGeometry, gearPairDrawing, hingeDrawing, jobEstimate, pathStats, patternDrawing, printSize, puzzleDrawing,
   resolution, rulerDrawing, steps, tagDrawing, testCardDrawing, MAX_TEST_SQUARES,
   type GearOptions, type HingeOptions, type JobOptions, type PatternKind, type PatternOptions, type PuzzleOptions,
   type RulerOptions, type TagOptions, type TagShape, type TestCardOptions,
@@ -33,9 +37,10 @@ function useOptions<T extends object>(initial: T) {
 
 const metres = (mm: number) => (mm / 1000).toFixed(2);
 
-function Frame({ lang, built, name, caption, children, stats, tip, onNest, below, exportsExtra }: {
+function Frame({ lang, built, name, caption, children, stats, tip, onNest, below, exportsExtra, preview, tabs }: {
   lang: Language; built: Built; name: string; caption: string; children: React.ReactNode;
   stats?: React.ReactNode; tip?: string; onNest?: (d: Drawing) => void; below?: React.ReactNode; exportsExtra?: React.ReactNode;
+  preview?: React.ReactNode; tabs?: React.ReactNode;
 }) {
   const { drawing, error } = built;
   const size = drawing ? `${drawing.width.toFixed(1)} × ${drawing.height.toFixed(1)}` : '—';
@@ -46,10 +51,10 @@ function Frame({ lang, built, name, caption, children, stats, tip, onNest, below
       <aside className="controls">{children}<div className="control-action"><ErrorNote error={error}/></div></aside>
       <div className="canvas-column">
         <div className="canvas-toolbar">
-          <span className={`status-pill ${drawing ? 'ready' : ''}`}><i/>{drawing ? tx(lang, 'Ready to cut', 'جاهز للقص') : tx(lang, 'Check the settings', 'راجع الإعدادات')}</span>
+          {tabs ?? <span className={`status-pill ${drawing ? 'ready' : ''}`}><i/>{drawing ? tx(lang, 'Ready to cut', 'جاهز للقص') : tx(lang, 'Check the settings', 'راجع الإعدادات')}</span>}
           <span className="micro">{tx(lang, 'Red cuts · blue engraves', 'الأحمر للقص · الأزرق للحفر')}</span>
         </div>
-        <VectorPreview drawing={drawing} lang={lang} caption={caption}/>
+        {preview ?? <VectorPreview drawing={drawing} lang={lang} caption={caption}/>}
         <div className="stats-row">
           <Stat label={tx(lang, 'Size', 'المقاس')} value={size} unit="mm"/>
           <Stat label={tx(lang, 'Cut length', 'طول القص')} value={lengths ? metres(lengths.cut) : '—'} unit="m"/>
@@ -96,14 +101,41 @@ export function HingeWorkspace({ lang, onNest }: { lang: Language; onNest: (d: D
 
 // ——— Gear ———
 
+/** Fewest teeth an involute gear has before its teeth undercut: 2 / sin²(pressure angle). */
+const minTeeth = (pressure: number) => Math.floor(2 / Math.sin((pressure * Math.PI) / 180) ** 2);
+
 export function GearWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Drawing) => void }) {
   const [o, set] = useOptions<GearOptions>(defaultGear);
-  const built = useMemo(() => build(() => gearDrawing(o)), [o]);
+  const [pair, setPair] = useState(false), [teeth2, setTeeth2] = useState(36), [bore2, setBore2] = useState(defaultGear.bore);
+  const [view, setView] = useState<'flat' | '3d'>('flat'), [thickness, setThickness] = useState(4);
+  const built = useMemo(() => build(() => (pair ? gearPairDrawing(o, teeth2, bore2) : gearDrawing(o))), [o, pair, teeth2, bore2]);
   const g = gearGeometry({ ...o, teeth: Math.round(o.teeth) });
-  return <Frame lang={lang} built={built} name={`gear-${Math.round(o.teeth)}t-m${o.module}`} onNest={onNest}
+  const spinParts = useMemo((): SpinPart[] => built.drawing ? built.drawing.shapes.map((s, i) => {
+    const cut = s.contours.filter(c => c.layer !== 'engrave');
+    const pitchCircle = s.contours.find(c => c.layer === 'engrave')!;
+    const xs = pitchCircle.points.map(p => p.x), ys = pitchCircle.points.map(p => p.y);
+    const centre = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+    return { outline: cut[0].points, holes: cut.slice(1).map(c => c.points), centre, ratio: i ? -Math.round(o.teeth) / Math.round(teeth2) : 1 };
+  }) : [], [built.drawing, o.teeth, teeth2]);
+  const smallest = pair ? Math.min(Math.round(o.teeth), Math.round(teeth2)) : Math.round(o.teeth);
+  const undercut = smallest < minTeeth(o.pressure);
+  const tabs = <div className="sheet-tabs view-tabs" role="tablist">
+    <button role="tab" aria-selected={view === 'flat'} className={view === 'flat' ? 'selected' : ''} onClick={() => setView('flat')}>{tx(lang, 'Flat layout', 'التخطيط المسطّح')}</button>
+    <button role="tab" aria-selected={view === '3d'} className={view === '3d' ? 'selected' : ''} onClick={() => setView('3d')}>{tx(lang, '3D view', 'عرض ثلاثي الأبعاد')}</button>
+  </div>;
+  return <Frame lang={lang} built={built} name={pair ? `gears-${Math.round(o.teeth)}t-${Math.round(teeth2)}t-m${o.module}` : `gear-${Math.round(o.teeth)}t-m${o.module}`} onNest={onNest}
     caption={tx(lang, 'Gear outline · pitch circle engraved', 'حدود الترس · دائرة الخطوة محفورة')}
-    stats={<Stat label={tx(lang, 'Pitch diameter', 'قطر الخطوة')} value={(g.pitch * 2).toFixed(2)} unit="mm"/>}
-    tip={tx(lang, 'Two gears mesh when they share the same module and pressure angle. Place their centres apart by the sum of their pitch radii.', 'يتعشّق ترسان إذا تساوى الموديول وزاوية الضغط. ضع مركزيهما على مسافة تساوي مجموع نصفي قطري الخطوة.')}>
+    tabs={tabs}
+    preview={view === '3d' && built.drawing ? <div className="preview-surface box-3d-surface"><Gear3D parts={spinParts} thickness={thickness} lang={lang}/></div> : undefined}
+    stats={<>
+      <Stat label={tx(lang, 'Pitch diameter', 'قطر الخطوة')} value={(g.pitch * 2).toFixed(2)} unit="mm"/>
+      {pair && <Stat label={tx(lang, 'Centre distance', 'المسافة بين المركزين')} value={centreDistance(o.module, o.teeth, teeth2).toFixed(2)} unit="mm"/>}
+      {pair && <Stat label={tx(lang, 'Ratio', 'نسبة التخفيض')} value={`1 : ${(Math.round(teeth2) / Math.round(o.teeth)).toFixed(2)}`}/>}
+    </>}
+    below={undercut ? <ErrorNote error={tx(lang, `Gears with fewer than ${minTeeth(o.pressure)} teeth at ${o.pressure}° undercut and may jam. Use more teeth or a larger pressure angle.`, `التروس بأقل من ${minTeeth(o.pressure)} سناً بزاوية ${o.pressure}° تتآكل قاعدة أسنانها وقد تعلق. استخدم أسناناً أكثر أو زاوية ضغط أكبر.`)}/> : null}
+    tip={pair
+      ? tx(lang, 'The two gears are laid out in mesh: drill the axle holes the centre distance apart. Cut a pair first and check how freely they turn; add a little clearance for a looser fit.', 'الترسان مرسومان متعشّقين: ضع ثقبي المحورين على المسافة بين المركزين. اقطع زوجاً أولاً وتأكد من سهولة الدوران؛ زد الخلوص قليلاً لتعشيق أرخى.')
+      : tx(lang, 'Two gears mesh when they share the same module and pressure angle. Turn on the second gear to lay out a meshing pair.', 'يتعشّق ترسان إذا تساوى الموديول وزاوية الضغط. فعّل الترس الثاني لرسم زوج متعشّق.')}>
     <Section title={tx(lang, 'Teeth', 'الأسنان')} number="01">
       <div className="field-pair"><NumberField label={tx(lang, 'Tooth count', 'عدد الأسنان')} value={o.teeth} onChange={set('teeth')} min={6} max={200}/><NumberField label={tx(lang, 'Module', 'الموديول')} value={o.module} onChange={set('module')} min={0.3} max={20} step={0.1} unit="mm"/></div>
       <div className="preset-row">{[14.5, 20, 25].map(angle => <button key={angle} className={o.pressure === angle ? 'selected' : ''} onClick={() => set('pressure')(angle)} dir="ltr">{angle}°</button>)}</div>
@@ -112,6 +144,13 @@ export function GearWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dr
     <Section title={tx(lang, 'Axle', 'المحور')} number="02">
       <NumberField label={tx(lang, 'Bore diameter', 'قطر فتحة المحور')} value={o.bore} onChange={set('bore')} step={0.5} unit="mm"/>
       <p className="micro" dir="ltr">Ø {(g.outer * 2).toFixed(2)} mm · root Ø {(g.root * 2).toFixed(2)} mm</p>
+    </Section>
+    <Section title={tx(lang, 'Second gear', 'الترس الثاني')} number="03">
+      <Toggle label={tx(lang, 'Add a meshing gear', 'أضف ترساً متعشّقاً')} value={pair} onChange={setPair}/>
+      {pair && <div className="field-pair"><NumberField label={tx(lang, 'Its tooth count', 'عدد أسنانه')} value={teeth2} onChange={setTeeth2} min={6} max={200}/><NumberField label={tx(lang, 'Its bore', 'قطر محوره')} value={bore2} onChange={setBore2} step={0.5} unit="mm"/></div>}
+    </Section>
+    <Section title={tx(lang, '3D view', 'العرض ثلاثي الأبعاد')} number="04">
+      <NumberField label={tx(lang, 'Material thickness', 'سماكة الخامة')} value={thickness} onChange={setThickness} min={0.5} max={50} step={0.5} unit="mm"/>
     </Section>
   </Frame>;
 }

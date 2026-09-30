@@ -119,7 +119,8 @@ export function gearGeometry(o: GearOptions) {
   return { pitch, outer: pitch + o.module, root: pitch - (1 + o.clearance) * o.module, base: pitch * Math.cos((o.pressure * Math.PI) / 180) };
 }
 
-export function gearDrawing(o: GearOptions): Drawing {
+/** A gear's outline around (0, 0), with tooth 0 pointing along +x, turned by `rotation`. */
+export function gearProfile(o: GearOptions, rotation = 0): Point[] {
   check(Math.round(o.teeth), 6, 200, 'Teeth'); check(o.module, 0.3, 20, 'Module');
   check(o.pressure, 14.5, 30, 'Pressure angle'); check(o.clearance, 0, 0.5, 'Clearance');
   const n = Math.round(o.teeth);
@@ -133,7 +134,7 @@ export function gearDrawing(o: GearOptions): Drawing {
   // Where the flank meets the root: zero when the root lies below the base
   // circle, otherwise the involute's own angle at the root radius.
   const rootAngle = inv(tAt(startR));
-  const at = (r: number, a: number): Point => ({ x: r * Math.cos(a), y: r * Math.sin(a) });
+  const at = (r: number, a: number): Point => ({ x: r * Math.cos(a + rotation), y: r * Math.sin(a + rotation) });
   const profile: Point[] = [];
   for (let k = 0; k < n; k++) {
     const centre = (k / n) * TAU;
@@ -154,12 +155,46 @@ export function gearDrawing(o: GearOptions): Drawing {
     const arcSteps = Math.max(2, Math.ceil(arcSegments(root, to - from)));
     for (let i = 1; i < arcSteps; i++) profile.push(at(root, from + ((to - from) * i) / arcSteps));
   }
-  const pad = 2, c = outer + pad;
-  const moved = profile.map(p => ({ x: p.x + c, y: p.y + c }));
-  const contours = [closed(moved)];
-  if (o.bore > 0) contours.push(closed(circle(c, c, o.bore / 2)));
-  contours.push(closed(circle(c, c, pitch), 'engrave'));
+  return profile;
+}
+
+/** One gear's cut outline, bore and engraved pitch circle, centred on (cx, cy). */
+function gearContours(o: GearOptions, cx: number, cy: number, rotation = 0): Contour[] {
+  const { pitch } = gearGeometry({ ...o, teeth: Math.round(o.teeth) });
+  const contours = [closed(gearProfile(o, rotation).map(p => ({ x: p.x + cx, y: p.y + cy })))];
+  if (o.bore > 0) contours.push(closed(circle(cx, cy, o.bore / 2)));
+  contours.push(closed(circle(cx, cy, pitch), 'engrave'));
+  return contours;
+}
+
+export function gearDrawing(o: GearOptions): Drawing {
+  const n = Math.round(o.teeth);
+  const { outer } = gearGeometry({ ...o, teeth: n });
+  const c = outer + 2;
+  const contours = gearContours(o, c, c);
   return { width: c * 2, height: c * 2, shapes: [shape('gear', `Gear ${n}T`, contours)] };
+}
+
+/** How far apart two meshing gears' centres sit: the sum of their pitch radii. */
+export function centreDistance(module: number, teeth1: number, teeth2: number) {
+  return (module * (Math.round(teeth1) + Math.round(teeth2))) / 2;
+}
+
+/** Two gears of the same module and pressure angle, placed in mesh: the
+ *  second is turned so a gap faces the first gear's tooth. */
+export function gearPairDrawing(o: GearOptions, teeth2: number, bore2 = o.bore): Drawing {
+  const n1 = Math.round(o.teeth), n2 = Math.round(teeth2);
+  check(n2, 6, 200, 'Second gear teeth');
+  const second = { ...o, teeth: n2, bore: bore2 };
+  const g1 = gearGeometry({ ...o, teeth: n1 }), g2 = gearGeometry(second);
+  const pad = 2, a = centreDistance(o.module, n1, n2);
+  const c1 = { x: g1.outer + pad, y: Math.max(g1.outer, g2.outer) + pad };
+  const c2 = { x: c1.x + a, y: c1.y };
+  const shapes = [
+    shape('gear-1', `Gear ${n1}T`, gearContours(o, c1.x, c1.y)),
+    shape('gear-2', `Gear ${n2}T`, gearContours(second, c2.x, c2.y, Math.PI - Math.PI / n2)),
+  ];
+  return { width: c2.x + g2.outer + pad, height: c1.y * 2, shapes };
 }
 
 // ——— Jigsaw puzzle ———

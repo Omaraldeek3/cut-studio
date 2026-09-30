@@ -19,5 +19,5 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: npx playwright install --with-deps chromium
-      # The CDR tests need the local converter, which only runs on a workshop computer.
-      - run: npx playwright test --grep-invert "CDR"
+      # Tests that need a CorelDRAW sample file skip when CorelDRAW is not installed.
+      - run: npx playwright test

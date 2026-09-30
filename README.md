@@ -16,7 +16,7 @@ Cut Studio is built in and for a signage and laser workshop in Palestine. Every 
 - **AI upscaler.** Real-ESRGAN in the browser, with a print planner (how many pixels a 6 m print needs from 5 m away), a detail test before the long run, a before/after slider and extra sharpness for signs.
 - **Arabic lettering.** Any font on your computer, shaped by HarfBuzz, welded into clean cut paths, with an optional sign plate and mounting holes.
 - **Contour & offset.** Round-cornered offsets for acrylic letter bases, weeding borders and print-and-cut sticker lines.
-- **Vector cleanup.** Repairs any SVG or DXF for cutting: removes overlapping lines (Delete Overlap), joins small gaps and cuts thousands of nodes down to lines and arcs.
+- **Vector cleanup.** Repairs any SVG, DXF or CorelDRAW file for cutting: removes overlapping lines (Delete Overlap), joins small gaps and cuts thousands of nodes down to lines and arcs.
 - **Resize & repeat.**
 
 **Laser & CNC**
@@ -46,13 +46,13 @@ npm run dev
 
 Then open http://127.0.0.1:3000. `npm run build` makes a production build; `npm test` runs the Playwright suite (unit tests of the geometry and full browser tests of every tool).
 
-**CorelDRAW files** are converted by `cdr2xhtml` (libcdr) on your own computer. On Windows x64, run `python scripts/setup-cdr-runtime.py` once; it downloads pinned, checksum-verified MSYS2 packages into `.tools/`. The website itself does not convert CDR files.
+**CorelDRAW files** are read in the browser by libcdr compiled to WebAssembly (`public/wasm/cdr2xhtml.wasm`). To rebuild it, run `sh native/cdr/build.sh` on Linux or WSL; it fetches pinned, checksum-verified sources.
 
 **A test pack** for your machines: `npm run test-pack` writes a box, a gear, a puzzle, a traced logo and an offset as SVG and DXF into `test-pack/`.
 
 ## How it is built
 
-Next.js 16 and React 19, with every tool running in the browser: tracing and nesting in Web Workers, Real-ESRGAN through ONNX Runtime Web (WebGPU when available), text shaping through HarfBuzz compiled to WebAssembly, and vector welding and offsets through Clipper2. `docs/TOOLKIT.md` documents each tool's limits and tolerances.
+Next.js 16 and React 19, with every tool running in the browser: tracing and nesting in Web Workers, Real-ESRGAN through ONNX Runtime Web (WebGPU when available), text shaping through HarfBuzz and CorelDRAW reading through libcdr, both compiled to WebAssembly, and vector welding and offsets through Clipper2. `docs/TOOLKIT.md` documents each tool's limits and tolerances.
 
 ```
 src/app/        routes: /[locale]/[tool], sitemap, robots
@@ -72,7 +72,7 @@ MIT, © 2026 [Omar Aldeek](https://omardeek.tech). Third-party components and th
 
 Cut Studio مجموعة أدوات مجانية صنعتها لورشتي للدعاية والإعلان والقص بالليزر في فلسطين، وتركتها مفتوحة للجميع. كل أداة تحل عملاً حقيقياً: شعار للقص على الأكريليك، اسم محل بالعربي للبلوتر، بوستر واجهة بستة أمتار، أو عرض سعر لطلبية ميداليات.
 
-- ملفاتك لا تغادر جهازك: لا حساب ولا رفع ملفات.
+- ملفاتك لا تغادر جهازك، حتى ملفات CorelDRAW: لا حساب ولا رفع ملفات.
 - الملفات تخرج جاهزة للقص: خطوط وأقواس ومنحنيات حقيقية، بلا خطوط مكررة تحتاج Delete Overlap.
 - الواجهة بالعربية والإنجليزية، والكتابة العربية تتشكل بشكل صحيح بأي خط.
 

@@ -8,6 +8,8 @@ next-env.d.ts
 .env*.local
 *.log
 .vercel
+
 .tools/
 public/vendor/
 test-pack/
+.env*

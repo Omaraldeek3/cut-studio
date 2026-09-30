@@ -14,6 +14,7 @@ const config: NextConfig = {
     return [
       { source: "/models/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
       { source: "/vendor/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=604800" }] },
+      { source: "/wasm/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=604800" }] },
     ];
   },
 };

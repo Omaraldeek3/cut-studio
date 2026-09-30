@@ -13,4 +13,18 @@ following work by others, each under its own licence.
 | [Clipper2](https://github.com/AngusJohnson/Clipper2) via [@countertype/clipper2-ts](https://github.com/countertype/clipper2-ts) | Welding letters and offsetting outlines | Boost Software License 1.0 |
 | [three.js](https://threejs.org) | 3D views of boxes and gears | MIT |
 | [Next.js](https://nextjs.org) and [React](https://react.dev) | The application | MIT |
-| [libcdr](https://wiki.documentfoundation.org/DLP/Libraries/libcdr) (`cdr2xhtml`), set up locally by `scripts/setup-cdr-runtime.py` | Reading CorelDRAW files on your own computer; not part of the website | MPL 2.0 |
+| [libcdr](https://wiki.documentfoundation.org/DLP/Libraries/libcdr) 0.1.9 and [librevenge](https://sourceforge.net/p/libwpd/librevenge/) 0.0.6, compiled with its `cdr2xhtml` converter to `public/wasm/cdr2xhtml.wasm` | Reading CorelDRAW files in the browser | MPL 2.0 (see below) |
+| [Little CMS](https://www.littlecms.com) 2.12 and [zlib](https://zlib.net) 1.3.1, in the same module | Colour management and decompression inside libcdr | MIT, zlib License |
+| ICU compatibility headers from [go-libcdr](https://github.com/nobbs/go-libcdr), in `native/cdr/shim` | Letting libcdr build without the full ICU library | MIT, copyright Alexej Disterhoft; the ICU-derived macro keeps its notice in `native/cdr/shim/NOTICE` |
+
+## CorelDRAW reader source code
+
+`public/wasm/cdr2xhtml.wasm` contains libcdr and librevenge in executable form.
+Under the Mozilla Public License 2.0, their source code is available from:
+
+- libcdr 0.1.9: https://dev-www.libreoffice.org/src/libcdr/libcdr-0.1.9.tar.xz
+- librevenge 0.0.6: https://dev-www.libreoffice.org/src/librevenge-0.0.6.tar.bz2
+
+No file of either project is modified. `native/cdr/build.sh` downloads exactly
+these archives (checked by SHA-256) and rebuilds the module from them.
+CorelDRAW is a trademark of Corel Corporation; Cut Studio is not affiliated with Corel.

@@ -70,7 +70,7 @@ test('rejects active content, references, CSS transforms, and clipping without D
 });
 test('invalid path data and excessive shape counts fail clearly', async ({ page }) => {
   await expect(parse(page, svg('<path d="M0 0 C2 3"/>'))).rejects.toThrow(/path/i);
-  await expect(parse(page, svg('<rect width="1" height="1"/>'.repeat(5001)))).rejects.toThrow(/5,000 shapes/);
+  await expect(parse(page, svg('<rect width="1" height="1"/>'.repeat(20001)))).rejects.toThrow(/20,000 shapes/);
 });
 test('unitless pixels without a viewBox and physical override remain proportional', async ({ page }) => {
   const native = await parse(page, svg('<rect width="96" height="48"/>', 'width="72pt" height="48px"'));

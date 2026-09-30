@@ -212,7 +212,7 @@ function geometry(entities: Entity[], tolerance: number): Shape[] {
     if (contour.closed && same(contour.points[0], contour.points[contour.points.length - 1])) contour.points.pop();
     if (contour.points.length < 2 || contour.points.every(p => same(p, contour.points[0]))) fail(`${e.type} has no usable length.`);
     shapes.push({ id: `dxf-${shapes.length + 1}`, name: values(e, 8)[0] || e.type, contours: [contour] });
-    if (shapes.length > 5000) fail('Drawing exceeds the 5,000 shape limit.');
+    if (shapes.length > 20000) fail('Drawing exceeds the 20,000 shape limit.');
   }
   if (!shapes.length) fail('No cut geometry found in ENTITIES.');
   return shapes;

@@ -57,7 +57,7 @@ test('malformed, empty and excessive inputs are rejected', () => {
   expect(() => parseDxf('not a DXF')).toThrow(/DXF/i);
   expect(() => parseDxf(dxf([]))).toThrow(/geometry|entities/i);
   expect(() => parseDxf(dxf([0,'LINE',10,'NaN',20,0,11,10,21,0]))).toThrow(/number|coordinate/i);
-  expect(() => parseDxf(dxf(Array.from({length:5001},()=>line).flat()))).toThrow(/5,000 shape/);
+  expect(() => parseDxf(dxf(Array.from({length:20001},()=>line).flat()))).toThrow(/20,000 shape/);
   expect(() => parseDxf(' '.repeat(32 * 1024 * 1024 + 1))).toThrow(/32 MB/);
 });
 test('submillimetre geometry retains actual dimensions', () => {

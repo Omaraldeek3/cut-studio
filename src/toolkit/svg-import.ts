@@ -6,7 +6,7 @@ const MAX_VERTICES = 1_000_000;
 const CURVE_TOLERANCE_MM = 0.09;
 const MAX_GEOMETRY_WORK = 20_000_000;
 const MAX_ELEMENTS = 50_000;
-const MAX_SHAPES = 5_000;
+const MAX_SHAPES = 20_000;
 const NUMBER = /[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/g;
 const presentation = new Set(['fill', 'fill-rule', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity', 'stroke-linecap', 'stroke-linejoin', 'stroke-miterlimit', 'opacity', 'vector-effect', 'paint-order', 'color']);
 // Style properties that never change cutting geometry. Design programs (CorelDRAW,
@@ -257,7 +257,7 @@ export async function parseSvg(source: string, physicalWidthMm?: number): Promis
     const matrix = inherited.multiply(localTransform(el.getAttribute('transform')));
     if (el.localName === 'g' || el === root) { for (const child of Array.from(el.children)) visit(child, matrix, depth + 1); return; }
     if (!geometry.has(el.localName)) fail('Gradient definitions must be inside defs.');
-    if (shapes.length >= MAX_SHAPES) fail('SVG exceeds 5,000 shapes.');
+    if (shapes.length >= MAX_SHAPES) fail('SVG exceeds 20,000 shapes.');
     const scalar = (name: string, fallback = 0) => {
       const raw = el.getAttribute(name);
       if (raw === null) return fallback;

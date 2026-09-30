@@ -1,16 +1,18 @@
 'use client';
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
+import type * as HB from 'harfbuzzjs';
+import { builtInFonts, textLoops, WEIGHTS, type FontChoice } from './fonts';
 import type { Drawing } from './types';
 import { tx, type Language } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Section, Stat, Toggle, VectorPreview } from './ui';
 import { VectorInput } from './vector-input';
 import { download } from './export';
 import {
-  defaultGear, defaultHinge, defaultJob, defaultPattern, defaultPuzzle, defaultRuler, defaultSign, defaultTag, defaultTestCard,
+  defaultGear, defaultHinge, defaultJob, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
   duration, gearDrawing, gearGeometry, hingeDrawing, jobEstimate, pathStats, patternDrawing, printSize, puzzleDrawing,
-  resolution, rulerDrawing, signDrawing, steps, tagDrawing, testCardDrawing,
+  resolution, rulerDrawing, steps, tagDrawing, testCardDrawing,
   type GearOptions, type HingeOptions, type JobOptions, type PatternKind, type PatternOptions, type PuzzleOptions,
-  type RulerOptions, type SignOptions, type TagOptions, type TagShape, type TestCardOptions,
+  type RulerOptions, type TagOptions, type TagShape, type TestCardOptions,
 } from './generators';
 
 /* The parametric tools share one frame: settings on the side, the drawing in
@@ -136,12 +138,27 @@ export function PuzzleWorkspace({ lang, onNest }: { lang: Language; onNest: (d: 
 // ——— Tags ———
 
 export function TagWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Drawing) => void }) {
-  const [o, set] = useOptions<TagOptions>(defaultTag);
-  const built = useMemo(() => build(() => tagDrawing(o)), [o]);
+  const [o, set] = useOptions<TagOptions>({ ...defaultTag, text: 'اسمك هنا', textHeight: 8 });
+  const [style, setStyle] = useState<'font' | 'single'>('font');
+  const [weight, setWeight] = useState('700');
+  const [engine, setEngine] = useState<{ hb: typeof HB; choice: FontChoice } | null>(null);
+  useEffect(() => {
+    let live = true;
+    builtInFonts(weight).then(({ engine: hb, choice }) => { if (live) setEngine({ hb, choice }); }).catch(() => { if (live) setEngine(null); });
+    return () => { live = false; };
+  }, [weight]);
+  const font = useMemo(() => {
+    if (style !== 'font' || !engine || !o.text.trim()) return null;
+    try { return textLoops(engine.hb, engine.choice.fonts, o.text.trim(), 1); } catch { return null; }
+  }, [style, engine, o.text]);
+  const waiting = style === 'font' && !!o.text.trim() && !font;
+  const built = useMemo(() => waiting ? { drawing: null, error: '' } : build(() => tagDrawing(style === 'single' ? o : { ...o, text: '' }, font)), [o, style, font, waiting]);
   const shapes: [TagShape, string][] = [['rounded', tx(lang, 'Rounded rectangle', 'مستطيل بزوايا دائرية')], ['circle', tx(lang, 'Circle', 'دائرة')], ['hexagon', tx(lang, 'Hexagon', 'سداسي')], ['star', tx(lang, 'Star', 'نجمة')], ['shield', tx(lang, 'Shield', 'درع')]];
   return <Frame lang={lang} built={built} name={`tag-${o.shape}-${o.width}x${o.height}`} onNest={onNest}
     caption={tx(lang, 'Tag outline, hole and engraving', 'حدود البطاقة والثقب والحفر')}
-    tip={tx(lang, 'Send the tag to nesting to fill a sheet with copies. The engraving font covers A–Z, 0–9, space and hyphen.', 'أرسل البطاقة إلى ترتيب القطع لتملأ لوحاً كاملاً بنسخ منها. خط الحفر يدعم A–Z و 0–9 والمسافة والشرطة.')}>
+    tip={style === 'font'
+      ? tx(lang, 'Font text is filled: set its blue layer to Scan (engrave) in RDWorks or LightBurn. Send the tag to nesting to fill a sheet with copies.', 'نص الخط مملوء: اجعل طبقته الزرقاء على وضع Scan (حفر) في RDWorks أو LightBurn. أرسل البطاقة إلى ترتيب القطع لتملأ لوحاً بنسخ منها.')
+      : tx(lang, 'Single-line letters engrave as lines in one fast pass. They cover A–Z, 0–9, space and hyphen.', 'الحروف ذات الخط الواحد تُحفر كخطوط بمرور واحد سريع، وتدعم A–Z و 0–9 والمسافة والشرطة.')}>
     <Section title={tx(lang, 'Shape', 'الشكل')} number="01">
       <Choice label={tx(lang, 'Outline', 'الحدود')} value={o.shape} options={shapes} onChange={set('shape')}/>
       <div className="field-pair"><NumberField label={tx(lang, 'Width', 'العرض')} value={o.width} onChange={set('width')} min={8} unit="mm"/><NumberField label={tx(lang, 'Height', 'الارتفاع')} value={o.height} onChange={set('height')} min={8} unit="mm"/></div>
@@ -152,8 +169,13 @@ export function TagWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
       <NumberField label={tx(lang, 'Engraved border inset', 'إزاحة الإطار المحفور')} value={o.border} onChange={set('border')} step={0.5} unit="mm"/>
     </Section>
     <Section title={tx(lang, 'Text', 'النص')} number="03">
-      <TextField label={tx(lang, 'Engraved text (A–Z, 0–9)', 'النص المحفور (A–Z و 0–9)')} value={o.text} onChange={set('text')} max={24}/>
-      <NumberField label={tx(lang, 'Letter height', 'ارتفاع الحرف')} value={o.textHeight} onChange={set('textHeight')} min={1.5} step={0.5} unit="mm"/>
+      <TextField label={tx(lang, 'Engraved text', 'النص المحفور')} value={o.text} onChange={set('text')} max={40}/>
+      <div className="preset-row">
+        {WEIGHTS.map(w => <button key={w.id} className={style === 'font' && weight === w.id ? 'selected' : ''} onClick={() => { setStyle('font'); setWeight(w.id); }}>{tx(lang, `Tajawal ${w.en}`, `تجوال ${w.ar}`)}</button>)}
+        <button className={style === 'single' ? 'selected' : ''} onClick={() => setStyle('single')}>{tx(lang, 'Single line A–Z', 'خط واحد A–Z')}</button>
+      </div>
+      <NumberField label={tx(lang, 'Largest letter height', 'أقصى ارتفاع للحروف')} value={o.textHeight} onChange={set('textHeight')} min={1.5} step={0.5} unit="mm"/>
+      <p className="micro">{tx(lang, 'The text shrinks to fit the tag when it would not fit at this height.', 'يصغر النص تلقائياً ليناسب البطاقة إذا لم يتسع بهذا الارتفاع.')}</p>
     </Section>
   </Frame>;
 }
@@ -227,27 +249,6 @@ export function RulerWorkspace({ lang }: { lang: Language }) {
     <Section title={tx(lang, 'Body', 'الجسم')} number="02">
       <div className="field-pair"><NumberField label={tx(lang, 'Width', 'العرض')} value={o.width} onChange={set('width')} min={12} max={100} unit="mm"/><NumberField label={tx(lang, 'End margin', 'هامش الطرف')} value={o.margin} onChange={set('margin')} min={2} unit="mm"/></div>
       <NumberField label={tx(lang, 'Hanging hole', 'ثقب التعليق')} value={o.hole} onChange={set('hole')} step={0.5} unit="mm"/>
-    </Section>
-  </Frame>;
-}
-
-// ——— Sign ———
-
-export function SignWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Drawing) => void }) {
-  const [o, set] = useOptions<SignOptions>(defaultSign);
-  const built = useMemo(() => build(() => signDrawing(o)), [o]);
-  return <Frame lang={lang} built={built} name={`sign-${o.line1.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'plate'}`} onNest={onNest}
-    caption={tx(lang, 'Plate cuts · letters and border engrave', 'اللوحة للقص · الحروف والإطار للحفر')}
-    tip={tx(lang, 'The letters are single strokes, so they engrave as clean lines in one pass. For Arabic lettering, prepare the text in CorelDRAW, convert it to curves, and bring it in through nesting.', 'الحروف بخط واحد فتُحفر كخطوط نظيفة بمرور واحد. للكتابة العربية جهّز النص في CorelDRAW وحوّله إلى منحنيات ثم استورده عبر ترتيب القطع.')}>
-    <Section title={tx(lang, 'Lettering', 'الكتابة')} number="01">
-      <TextField label={tx(lang, 'First line', 'السطر الأول')} value={o.line1} onChange={set('line1')} max={30}/>
-      <TextField label={tx(lang, 'Second line (optional)', 'السطر الثاني (اختياري)')} value={o.line2} onChange={set('line2')} max={40}/>
-      <NumberField label={tx(lang, 'Letter height', 'ارتفاع الحرف')} value={o.height} onChange={set('height')} min={3} max={120} unit="mm"/>
-    </Section>
-    <Section title={tx(lang, 'Plate', 'اللوحة')} number="02">
-      <div className="field-pair"><NumberField label={tx(lang, 'Padding', 'الحشوة')} value={o.padding} onChange={set('padding')} min={2} unit="mm"/><NumberField label={tx(lang, 'Corner radius', 'نصف قطر الزوايا')} value={o.radius} onChange={set('radius')} unit="mm"/></div>
-      <Toggle label={tx(lang, 'Mounting holes', 'ثقوب التثبيت')} value={o.holes} onChange={set('holes')}/>
-      <Toggle label={tx(lang, 'Engraved border', 'إطار محفور')} value={o.border} onChange={set('border')}/>
     </Section>
   </Frame>;
 }

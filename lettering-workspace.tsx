@@ -5,9 +5,11 @@ import type { Contour, Drawing, Shape } from './types';
 import type { ToolId } from './copy';
 import { tx, type Language } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Range, Section, Stat, Toggle, VectorPreview } from './ui';
-import { commandLoops, groupLoops, layoutText, type Align, type Fonts, type Shaper } from './lettering';
-import { woffToSfnt } from './woff';
+import { commandLoops, groupLoops, layoutText, type Align } from './lettering';
+import { builtInFonts, loadHarfBuzz, shaperFrom, WEIGHTS, type FontChoice, type LocalFont } from './fonts';
 import { unionContours } from './vector-ops';
+import { circle, roundedRect } from './generators';
+import { moveShape } from './geometry';
 
 /* Arabic and English lettering as cut paths. Text is shaped by HarfBuzz in
    the browser, with the built-in Tajawal, any font installed on this
@@ -15,40 +17,34 @@ import { unionContours } from './vector-ops';
    design) can be welded into one clean outline, so the laser or the plotter
    never cuts a line through the middle of a word. */
 
-type LocalFont = { family: string; fullName: string; postscriptName: string; style: string; blob: () => Promise<Blob> };
-type FontChoice = { label: string; fonts: Fonts };
+type PlateOptions = { shape: 'rect' | 'pill'; padding: number; radius: number; holes: 0 | 2 | 4; holeSize: number; textOn: 'engrave' | 'cut' };
 
-let harfbuzz: Promise<typeof HB> | null = null;
-function loadHarfBuzz() {
-  return (harfbuzz ??= import(/* webpackIgnore: true */ /* turbopackIgnore: true */ new URL('/vendor/harfbuzz/index.mjs', window.location.origin).href) as Promise<typeof HB>);
-}
-
-async function shaperFrom(hb: typeof HB, bytes: Uint8Array, postscript?: string): Promise<Shaper> {
-  const sfnt = await woffToSfnt(bytes);
-  const blob = new hb.Blob(sfnt);
-  // A collection (.ttc) holds several faces; pick the one asked for.
-  const collection = sfnt[0] === 0x74 && sfnt[1] === 0x74 && sfnt[2] === 0x63 && sfnt[3] === 0x66;
-  let face = new hb.Face(blob, 0);
-  if (collection && postscript) {
-    for (let i = 0; i < 32; i++) {
-      const candidate = new hb.Face(blob, i);
-      if (!candidate.upem) break;
-      if (candidate.getName(6, 'en') === postscript) { face = candidate; break; }
-    }
+/** Puts a cut plate around lettered text: a door sign or a name plate.
+ *  Engraved text stays on the plate as one part; cut letters become their
+ *  own parts (for a second colour of acrylic) and leave an engraved outline
+ *  on the plate to glue them onto. */
+export function withPlate(letters: Shape[], width: number, height: number, o: PlateOptions): { drawing: Drawing; parts: number } {
+  if (!(o.padding > 0)) throw new Error('The margin must be above zero.');
+  const w = width + 2 * o.padding, h = height + 2 * o.padding;
+  const radius = o.shape === 'pill' ? h / 2 : Math.max(0, Math.min(o.radius, w / 2, h / 2));
+  const outline: Contour = { closed: true, points: roundedRect(0, 0, w, h, radius) };
+  const holeR = o.holeSize / 2;
+  if (o.holes && holeR * 2 + 2 > o.padding) throw new Error('The holes do not fit in the margin. Widen the margin or use smaller holes.');
+  const inset = o.shape === 'pill' ? Math.max(o.padding / 2, h / 2 - Math.sqrt(Math.max(0, (h / 2) ** 2 - (h / 2 - o.padding / 2) ** 2))) : o.padding / 2;
+  const centres = o.holes === 2 ? [[inset, h / 2], [w - inset, h / 2]] : o.holes === 4 ? [[o.padding / 2, o.padding / 2], [w - o.padding / 2, o.padding / 2], [o.padding / 2, h - o.padding / 2], [w - o.padding / 2, h - o.padding / 2]] : [];
+  if (o.holes === 4 && o.shape === 'pill') throw new Error('A plate with rounded ends takes two holes, at the sides.');
+  const holeContours: Contour[] = centres.map(([x, y]) => ({ closed: true, points: circle(x, y, holeR) }));
+  const text = letters.map(s => moveShape(s, o.padding, o.padding));
+  const plateShape: Shape = { id: 'plate', name: 'Plate', contours: [outline, ...holeContours] };
+  if (o.textOn === 'engrave') {
+    plateShape.contours.push(...text.flatMap(s => s.contours.map(c => ({ ...c, layer: 'engrave' as const }))));
+    return { drawing: { width: w, height: h, shapes: [plateShape] }, parts: 1 };
   }
-  if (!face.upem) throw new Error('This file is not a font HarfBuzz can read.');
-  return { font: new hb.Font(face), upem: face.upem };
+  plateShape.contours.push(...text.flatMap(s => s.contours.map(c => ({ ...c, layer: 'engrave' as const }))));
+  // The letters to cut sit below the plate, never on it, so the plate is not cut through.
+  const gap = 10, below = letters.map(s => moveShape(s, o.padding, h + gap));
+  return { drawing: { width: w, height: h + gap + height, shapes: [plateShape, ...below] }, parts: 1 + below.length };
 }
-
-/** The built-in Tajawal: an Arabic file and a Latin file of one weight. */
-async function builtInFonts(weight: string): Promise<{ engine: typeof HB; choice: FontChoice }> {
-  const engine = await loadHarfBuzz();
-  const read = async (script: string) => new Uint8Array(await (await fetch(`/vendor/fonts/tajawal-${script}-${weight}-normal.woff`)).arrayBuffer());
-  const [arabic, latin] = await Promise.all([shaperFrom(engine, await read('arabic')), shaperFrom(engine, await read('latin'))]);
-  return { engine, choice: { label: `Tajawal ${WEIGHTS.find(x => x.id === weight)?.en ?? ''}`, fonts: { arabic, latin } } };
-}
-
-const WEIGHTS = [{ id: '400', en: 'Regular', ar: 'عادي' }, { id: '700', en: 'Bold', ar: 'عريض' }, { id: '900', en: 'Black', ar: 'عريض جداً' }];
 
 export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (drawing: Drawing, tool: ToolId, name?: string) => void }) {
   const [text, setText] = useState('افتتاح قريباً');
@@ -64,6 +60,12 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
   const [align, setAlign] = useState<Align>('center');
   const [welded, setWelded] = useState(true);
   const [mirror, setMirror] = useState(false);
+  const [plate, setPlate] = useState<'none' | 'rect' | 'pill'>('none');
+  const [padding, setPadding] = useState(15);
+  const [plateRadius, setPlateRadius] = useState(6);
+  const [holes, setHoles] = useState<0 | 2 | 4>(2);
+  const [holeSize, setHoleSize] = useState(5);
+  const [textOn, setTextOn] = useState<'engrave' | 'cut'>('engrave');
   const [hb, setHb] = useState<typeof HB | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
@@ -122,9 +124,10 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
       const byLoop = new Map(contours.map(c => [c.points, c]));
       const groups = groupLoops(contours.map(c => c.points));
       const shapes: Shape[] = groups.map((group, i) => ({ id: `letter-${i}`, name: `Letter ${i + 1}`, contours: group.map(loop => byLoop.get(loop)!) }));
-      return { drawing: { width, height, shapes }, parts: groups.length, problem: '' };
+      if (plate === 'none') return { drawing: { width, height, shapes }, parts: groups.length, problem: '' };
+      return { ...withPlate(shapes, width, height, { shape: plate, padding, radius: plateRadius, holes, holeSize, textOn }), problem: '' };
     } catch (cause) { return { drawing: null, parts: 0, problem: cause instanceof Error ? cause.message : 'Lettering failed.' }; }
-  }, [layout, welded, size, fit, mirror]);
+  }, [layout, welded, size, fit, mirror, plate, padding, plateRadius, holes, holeSize, textOn]);
 
   const drawing = result.drawing;
   const name = text.trim().slice(0, 24).replace(/[\\/:*?"<>|\s]+/g, '-') || 'lettering';
@@ -176,6 +179,31 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
         <Section title={tx(lang, 'For cutting', 'للقص')} number="04">
           <Toggle label={tx(lang, 'Weld overlapping letters', 'ادمج الحروف المتداخلة')} value={welded} onChange={setWelded} />
           <Toggle label={tx(lang, 'Mirror (engrave on the back)', 'عكس (للحفر من الخلف)')} value={mirror} onChange={setMirror} />
+        </Section>
+        <Section title={tx(lang, 'Sign plate', 'لوحة حول النص')} number="05">
+          <div className="preset-row">{([['none', tx(lang, 'No plate', 'بدون لوحة')], ['rect', tx(lang, 'Rectangle', 'مستطيلة')], ['pill', tx(lang, 'Rounded ends', 'أطراف دائرية')]] as const).map(([id, label]) => <button key={id} className={plate === id ? 'selected' : ''} onClick={() => setPlate(id)}>{label}</button>)}</div>
+          {plate !== 'none' && <>
+            <div className="field-pair">
+              <NumberField label={tx(lang, 'Margin around the text', 'الهامش حول النص')} value={padding} onChange={setPadding} min={2} max={500} unit="mm" />
+              {plate === 'rect' && <NumberField label={tx(lang, 'Corner radius', 'نصف قطر الزوايا')} value={plateRadius} onChange={setPlateRadius} max={500} unit="mm" />}
+            </div>
+            <div className="field-pair">
+              <label className="field"><span>{tx(lang, 'Mounting holes', 'ثقوب التثبيت')}</span>
+                <select value={holes} onChange={e => setHoles(Number(e.target.value) as 0 | 2 | 4)}>
+                  <option value={0}>{tx(lang, 'None', 'بدون')}</option>
+                  <option value={2}>{tx(lang, 'Two, at the sides', 'اثنان على الجانبين')}</option>
+                  <option value={4}>{tx(lang, 'Four, at the corners', 'أربعة في الزوايا')}</option>
+                </select>
+              </label>
+              {holes > 0 && <NumberField label={tx(lang, 'Hole diameter', 'قطر الثقب')} value={holeSize} onChange={setHoleSize} min={1} max={30} step={0.5} unit="mm" />}
+            </div>
+            <label className="field"><span>{tx(lang, 'The text', 'النص')}</span>
+              <select value={textOn} onChange={e => setTextOn(e.target.value as 'engrave' | 'cut')}>
+                <option value="engrave">{tx(lang, 'Engraved on the plate', 'محفور على اللوحة')}</option>
+                <option value="cut">{tx(lang, 'Cut as separate letters, with a placement guide', 'حروف مقصوصة منفصلة، مع دليل لتركيبها')}</option>
+              </select>
+            </label>
+          </>}
         </Section>
         <div className="control-action"><ErrorNote error={error || result.problem} /></div>
       </aside>

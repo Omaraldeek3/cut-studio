@@ -13,7 +13,7 @@ import { TilingWorkspace } from './tiling-workspace';
 import { ContourWorkspace } from './contour-workspace';
 import { LetteringWorkspace } from './lettering-workspace';
 import { SheetWorkspace } from './sheet-workspace';
-import { DpiWorkspace, GearWorkspace, HingeWorkspace, JobTimeWorkspace, PatternWorkspace, PuzzleWorkspace, RulerWorkspace, SignWorkspace, TagWorkspace, TestCardWorkspace } from './generator-workspaces';
+import { DpiWorkspace, GearWorkspace, HingeWorkspace, JobTimeWorkspace, PatternWorkspace, PuzzleWorkspace, RulerWorkspace, TagWorkspace, TestCardWorkspace } from './generator-workspaces';
 import { referenceDrawing, sampleDrawing } from './samples';
 import { download, toDxf, toSvg } from './export';
 import type { Drawing } from './types';
@@ -57,7 +57,6 @@ export default function Toolkit(){
   case 'pattern':return <PatternWorkspace lang={lang} onNest={onNest}/>;
   case 'testcard':return <TestCardWorkspace lang={lang}/>;
   case 'ruler':return <RulerWorkspace lang={lang}/>;
-  case 'sign':return <SignWorkspace lang={lang} onNest={onNest}/>;
   case 'jobtime':return <JobTimeWorkspace {...props}/>;
   case 'dpi':return <DpiWorkspace lang={lang}/>;
  }}

@@ -1,5 +1,6 @@
 import type { Contour, Drawing, Point, Shape } from './types';
 import { strokeText, textWidth } from './box/font';
+import { unionContours } from './vector-ops';
 
 /* Pure generators for the parametric tools. Every function returns a Drawing
    in millimetres with y pointing down, the same shape every other tool reads
@@ -239,7 +240,14 @@ function tagOutline(kind: TagShape, w: number, h: number, r: number, inset = 0):
   }
 }
 
-export function tagDrawing(o: TagOptions): Drawing {
+/** Text set in a font, as closed loops whose bounds start at (0, 0), in any unit. */
+export type TagText = { loops: Point[][]; width: number; height: number };
+
+/** A tag or keychain. Text in a font (any script, filled, engraved by scan)
+ *  comes in as `font`; without it the text uses the single-stroke A–Z font.
+ *  Either way the text shrinks to fit the space below the hole rather than
+ *  refusing, so any shape takes any text. */
+export function tagDrawing(o: TagOptions, font?: TagText | null): Drawing {
   check(o.width, 8, 600, 'Width'); check(o.height, 8, 600, 'Height');
   check(o.hole, 0, Math.min(o.width, o.height) / 2, 'Hole'); check(o.border, 0, Math.min(o.width, o.height) / 4, 'Border inset');
   const square = o.shape === 'circle' || o.shape === 'hexagon' || o.shape === 'star';
@@ -251,14 +259,29 @@ export function tagDrawing(o: TagOptions): Drawing {
     contours.push(closed(circle(w / 2, holeY, o.hole / 2)));
   }
   if (o.border > 0 && o.shape !== 'star') contours.push(closed(tagOutline(o.shape, w, h, o.radius, o.border), 'engrave'));
-  const text = o.text.trim().toUpperCase();
-  if (text) {
+  const text = font ? '' : o.text.trim().toUpperCase();
+  if (font || text) {
     check(o.textHeight, 1.5, 60, 'Text height');
-    const tw = textWidth(text, o.textHeight);
-    if (tw > w - o.border * 2 - 4) throw new Error('The text is wider than the tag. Shorten it or lower the text height.');
-    const top = o.hole > 0 && o.shape !== 'star' ? Math.max(h / 2 - o.textHeight / 2, holeY + o.hole / 2 + 2) : h / 2 - o.textHeight / 2;
-    if (top + o.textHeight > h - o.border - 1) throw new Error('The text does not fit below the hole. Make the tag taller.');
-    contours.push(...engraveText(text, o.textHeight, (w - tw) / 2, top));
+    // The box the text may use: inside the border, below the hole, and for
+    // round shapes inside the inscribed square so the corners stay clear.
+    const inner = square ? (Math.min(w, h) / 2 - o.border) * (o.shape === 'star' ? 0.9 : Math.SQRT2) : w - o.border * 2 - 4;
+    const top = o.hole > 0 && o.shape !== 'star' ? holeY + o.hole / 2 + 2 : (h - (square ? inner : h - 2 * o.border - 2)) / 2;
+    const bottom = square ? h / 2 + inner / 2 : h - o.border - 1;
+    const room = bottom - top;
+    if (room < 1.5 || inner < 3) throw new Error('There is no room for text below the hole. Make the tag larger or the hole smaller.');
+    if (font) {
+      const k = Math.min(o.textHeight / font.height, inner / font.width, room / font.height);
+      const tw = font.width * k, th = font.height * k;
+      const x = (w - tw) / 2, y = top + (room - th) / 2;
+      const loops = font.loops.map(loop => loop.map(p => ({ x: x + p.x * k, y: y + p.y * k })));
+      // Letters that touch are welded, so a scan fill never leaves a gap in a join.
+      contours.push(...unionContours(loops).map(c => ({ ...c, layer: 'engrave' as const })));
+    } else {
+      const fit = Math.min(o.textHeight, room, (o.textHeight * inner) / textWidth(text, o.textHeight));
+      if (fit < 1.5) throw new Error('The text is too long for this tag. Shorten it or make the tag wider.');
+      const tw = textWidth(text, fit);
+      contours.push(...engraveText(text, fit, (w - tw) / 2, top + (room - fit) / 2));
+    }
   }
   return { width: w, height: h, shapes: [shape('tag', 'Tag', contours)] };
 }
@@ -378,43 +401,6 @@ export function rulerDrawing(o: RulerOptions): Drawing {
     contours.push(...engraveText('IN', label * 0.8, o.margin + 1, o.width - label - 2));
   }
   return { width: total, height: o.width, shapes: [shape('ruler', 'Ruler', contours)] };
-}
-
-// ——— Sign and name plate ———
-
-export type SignOptions = { line1: string; line2: string; height: number; padding: number; radius: number; holes: boolean; border: boolean };
-export const defaultSign: SignOptions = { line1: 'WORKSHOP', line2: 'OPEN 9-5', height: 12, padding: 10, radius: 5, holes: true, border: true };
-
-export const signAlphabet = /^[A-Z0-9 \-]*$/;
-
-export function signDrawing(o: SignOptions): Drawing {
-  const lines = [o.line1, o.line2].map(line => line.trim().toUpperCase()).filter(Boolean);
-  if (!lines.length) throw new Error('Type the text for the sign.');
-  for (const line of lines) if (!signAlphabet.test(line)) throw new Error('The engraving font has A–Z, 0–9, space and hyphen only.');
-  check(o.height, 3, 120, 'Letter height'); check(o.padding, 2, 100, 'Padding'); check(o.radius, 0, 100, 'Corner radius');
-  const small = o.height * 0.6;
-  const heights = lines.map((_, i) => (i === 0 ? o.height : small));
-  const widths = lines.map((line, i) => textWidth(line, heights[i]));
-  const holeSpace = o.holes ? o.height * 0.9 : 0;
-  const inner = Math.max(...widths);
-  const lineGap = o.height * 0.5;
-  const textBlock = heights.reduce((a, b) => a + b, 0) + lineGap * (lines.length - 1);
-  const w = inner + o.padding * 2 + holeSpace * 2, h = textBlock + o.padding * 2;
-  const contours: Contour[] = [closed(roundedRect(0, 0, w, h, o.radius))];
-  if (o.border) {
-    const inset = Math.min(o.padding / 2, 4);
-    contours.push(closed(roundedRect(inset, inset, w - inset * 2, h - inset * 2, Math.max(0, o.radius - inset)), 'engrave'));
-  }
-  if (o.holes) {
-    const r = Math.max(1.5, o.height * 0.18);
-    contours.push(closed(circle(o.padding / 2 + holeSpace / 2 + 1, h / 2, r)), closed(circle(w - o.padding / 2 - holeSpace / 2 - 1, h / 2, r)));
-  }
-  let y = o.padding;
-  lines.forEach((line, i) => {
-    contours.push(...engraveText(line, heights[i], (w - widths[i]) / 2, y));
-    y += heights[i] + lineGap;
-  });
-  return { width: w, height: h, shapes: [shape('sign', 'Sign', contours)] };
 }
 
 // ——— Job time ———

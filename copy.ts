@@ -1,6 +1,14 @@
 export type Language='en'|'ar';
-export const toolIds=['nest','trace','upscale','tiles','contour','lettering','sheet','clean','repeat','quote','kerf','engrave','box','hinge','gear','puzzle','tag','pattern','testcard','ruler','dpi'] as const;
+export const toolIds=['trace','upscale','lettering','contour','clean','repeat','nest','box','gear','hinge','puzzle','tag','pattern','engrave','testcard','kerf','ruler','tiles','sheet','dpi','quote'] as const;
 export type ToolId=typeof toolIds[number];
+/** The tools grouped the way a workshop thinks about them, in toolIds order. */
+export const groups:{id:string;title:[string,string];tools:ToolId[]}[]=[
+  {id:'artwork',title:['Artwork','التصميم'],tools:['trace','upscale','lettering','contour','clean','repeat']},
+  {id:'laser',title:['Laser & CNC','الليزر والقص'],tools:['nest','box','gear','hinge','puzzle','tag','pattern','engrave','testcard','kerf','ruler']},
+  {id:'print',title:['Print','الطباعة'],tools:['tiles','sheet','dpi']},
+  {id:'business',title:['Business','الأعمال'],tools:['quote']},
+];
+export const groupOf=(id:ToolId)=>groups.find(g=>g.tools.includes(id))!;
 export const titles:Record<ToolId,[string,string]>={nest:['Material nesting','ترتيب القطع'],trace:['Image to vector','تحويل صورة إلى فيكتور'],clean:['Vector cleanup','تنظيف الفيكتور'],repeat:['Resize & repeat','المقاس والتكرار'],quote:['Job quote','عرض السعر'],kerf:['Fit test','اختبار التعشيق'],engrave:['Engraving prep','تجهيز صور الحفر'],box:['Box maker','صانع الصناديق'],
   upscale:['AI upscaler','تكبير الصور بالذكاء الاصطناعي'],tiles:['Poster tiling','تقسيم البوستر'],contour:['Contour & offset','الكونتور والإزاحة'],lettering:['Arabic lettering','الكتابة العربية'],sheet:['Print sheet','ورقة الطباعة'],
   hinge:['Living hinge','المفصل المرن'],gear:['Gear maker','صانع التروس'],puzzle:['Jigsaw puzzle','صانع البازل'],tag:['Tags & keychains','الميداليات والبطاقات'],pattern:['Grille patterns','نقوش التهوية'],testcard:['Power & speed test','بطاقة اختبار القوة والسرعة'],ruler:['Ruler maker','صانع المساطر'],dpi:['Resolution & DPI','الدقة والـDPI']};

@@ -292,5 +292,19 @@ test("cut-out tracing of a photo stays under 15 seconds", async () => {
   const t = Date.now();
   const r = vectorize({ width: info.width, height: info.height, data: new Uint8ClampedArray(data) }, { ...defaultVectorize, mode: "color", layering: "cutout", colors: 4 });
   expect(Date.now() - t).toBeLessThan(15000);
-  expect(audit(cutDrawing(r, 300)).duplicateMm).toBe(0);
+  const a = audit(cutDrawing(r, 300));
+  expect(a.duplicateMm).toBe(0);
+  // Thin shapes whose fitted borders touch fall back to their pixels, and the
+  // pixels they fall back on are the picture's own, untouched by corner sharpening.
+  expect(a.crossings).toBe(0);
+});
+
+test("four colours asked for on a four-colour logo gives all four", async () => {
+  // The anti-aliased pixels along every border are blends of two colours,
+  // not a fifth colour, and must not take a colour from the orange.
+  const r = vectorize(await logoRaster(), { ...defaultVectorize, mode: "color", layering: "cutout", colors: 4 });
+  const near = (hexColour: string, rgb: number[]) => [1, 3, 5].every((at, i) => Math.abs(parseInt(hexColour.slice(at, at + 2), 16) - rgb[i]) < 24);
+  const colours = r.palette.map(p => p.color);
+  expect(colours).toHaveLength(4);
+  for (const rgb of [[255, 255, 255], [0xd6, 0x28, 0x28], [0x00, 0x30, 0x49], [0xf7, 0x7f, 0x00]]) expect(colours.some(c => near(c, rgb))).toBe(true);
 });

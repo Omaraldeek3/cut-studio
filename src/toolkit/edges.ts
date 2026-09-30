@@ -44,7 +44,9 @@ function softenOpen(d: V[], fixed: Uint8Array, reach: number): V[] {
   let total = 0;
   for (let i = 1; i < n; i++) total += len({ x: d[i].x - d[i - 1].x, y: d[i].y - d[i - 1].y });
   const k = Math.min(Math.floor(n / 6), Math.round(reach / (total / Math.max(1, n - 1))));
-  if (k < 1) return d;
+  // Always a copy: corners are sharpened in place afterwards, and the pixel
+  // border itself must stay as it is for untangle to fall back on.
+  if (k < 1) return d.slice();
   return d.map((p, i) => {
     if (fixed[i]) return p;
     let sx = 0, sy = 0, weight = 0;
@@ -176,8 +178,11 @@ const crossing = (a: V, b: V, c: V, d: V) => {
  *  two sides can touch or cross. Those borders are fitted again, closer to
  *  their pixels, until nothing crosses (or they follow the pixels exactly). */
 function untangle(edges: TracedEdge[], o: Options) {
-  // Raw pixel borders never cross each other, so the passes always finish.
-  for (let pass = 0; pass < 12; pass++) {
+  // Raw pixel borders never cross each other, and from the third pass on every
+  // pass turns each fitted border that still crosses back into its pixels, so
+  // the passes always finish. A border made raw can cross a fitted neighbour it
+  // did not cross before, so a busy photo can take a few more passes.
+  for (let pass = 0; pass < edges.length + 3; pass++) {
     const cell = 8;
     const grid = new Map<string, number[]>();
     // Flattened finer than the audit that checks the files, so no crossing hides between samples.

@@ -272,12 +272,27 @@ function findPalette(p: Pixels, k: number): Float32Array {
     }
   };
   iterate(16);
+  // A pixel on the border between two colours is a blend of them: it lies on
+  // the straight line between the two in Lab. Those are the picture's
+  // anti-aliasing, not a colour of their own.
+  const blend = (s: number) => {
+    const x = S[s * 3], y = S[s * 3 + 1], z = S[s * 3 + 2];
+    for (let i = 0; i < count; i++) for (let j = i + 1; j < count; j++) {
+      const ax = C[i * 3], ay = C[i * 3 + 1], az = C[i * 3 + 2];
+      const dx = C[j * 3] - ax, dy = C[j * 3 + 1] - ay, dz = C[j * 3 + 2] - az;
+      const length = dx * dx + dy * dy + dz * dz;
+      if (!length) continue;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy + (z - az) * dz) / length));
+      if ((x - ax - t * dx) ** 2 + (y - ay - t * dy) ** 2 + (z - az - t * dz) ** 2 < 10 * 10) return true;
+    }
+    return false;
+  };
   // k-means spends its colours on large areas. A small group of pixels that
   // no colour fits (a pale veil line, a thin red outline) gets a colour of its
   // own, taken from the two colours that are most alike, which merge.
   for (let round = 0; round < 3 && count > 2; round++) {
     const far: number[] = [];
-    for (let s = 0; s < sampleCount; s++) if (best[s] > 16 * 16) far.push(s);
+    for (let s = 0; s < sampleCount; s++) if (best[s] > 16 * 16 && !blend(s)) far.push(s);
     if (far.length < Math.max(24, sampleCount * 0.002)) break;
     let a = 0, b = 1, closest = Infinity;
     for (let i = 0; i < count; i++) for (let j = i + 1; j < count; j++) {

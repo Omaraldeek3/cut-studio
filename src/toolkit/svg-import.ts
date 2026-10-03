@@ -1,4 +1,5 @@
 import type { Drawing, Shape, Contour, Point } from './types';
+import type { Seg } from './path';
 
 const NS = 'http://www.w3.org/2000/svg';
 export const MAX_SVG_BYTES = 32 * 1024 * 1024;
@@ -152,6 +153,12 @@ export async function parseSvg(source: string, physicalWidthMm?: number): Promis
     let current: Point = { x: 0, y: 0 }, start = current;
     let cubicControl: Point | undefined, quadControl: Point | undefined;
     let index = 0, command = '', previous = '';
+    // The exact outline of each contour alongside its polyline, so curves are
+    // exported as curves and not refitted from samples. Elliptical arcs drop it.
+    const exact = new Map<Contour, { start: Point; segs: Seg[]; curved: boolean } | null>();
+    const begin = (c: Contour, p: Point) => exact.set(c, { start: transform(p), segs: [], curved: false });
+    const line = (to: Point) => { const e = exact.get(contour!); if (e) e.segs.push({ type: 'L', to: transform(to) }); };
+    const cubic = (c1: Point, c2: Point, to: Point) => { const e = exact.get(contour!); if (e) { e.segs.push({ type: 'C', c1: transform(c1), c2: transform(c2), to: transform(to) }); e.curved = true; } };
     const arity: Record<string, number> = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, A: 7 };
     const norm = Math.hypot(matrix.a, matrix.b, matrix.c, matrix.d); // Frobenius upper bound on stretch.
     const measure = document.createElementNS(NS, 'path');
@@ -226,29 +233,33 @@ export async function parseSvg(source: string, physicalWidthMm?: number): Promis
       let end: Point;
       if (upper === 'M') {
         current = point(0); start = current;
-        contour = { points: [], closed: false }; contours.push(contour); add(current);
+        contour = { points: [], closed: false }; contours.push(contour); add(current); begin(contour, current);
         command = relative ? 'l' : 'L';
       } else {
         if (!contour) fail('SVG paths must begin with a move command.');
         // Drawing after Z starts a new contour at the closed subpath's start.
-        if (contour.closed) { contour = { points: [], closed: false }; contours.push(contour); add(current); }
+        if (contour.closed) { contour = { points: [], closed: false }; contours.push(contour); add(current); begin(contour, current); }
+        // A quadratic is stored as the cubic it equals.
+        const quad = (a: Point, to: Point) => cubic({ x: current.x + 2 / 3 * (a.x - current.x), y: current.y + 2 / 3 * (a.y - current.y) }, { x: to.x + 2 / 3 * (a.x - to.x), y: to.y + 2 / 3 * (a.y - to.y) }, to);
         switch (upper) {
           case 'L': end = point(0); add(end); break;
           case 'H': end = { x: n[0] + (relative ? current.x : 0), y: current.y }; add(end); break;
           case 'V': end = { x: current.x, y: n[0] + (relative ? current.y : 0) }; add(end); break;
-          case 'C': { const a = point(0), b = point(2); end = point(4); bezier([current, a, b, end].map(transform)); cubicControl = b; break; }
-          case 'S': { const a = /[CS]/.test(previous) && cubicControl ? { x: 2 * current.x - cubicControl.x, y: 2 * current.y - cubicControl.y } : current; const b = point(0); end = point(2); bezier([current, a, b, end].map(transform)); cubicControl = b; break; }
-          case 'Q': { const a = point(0); end = point(2); bezier([current, a, end].map(transform)); quadControl = a; break; }
-          case 'T': { const a: Point = /[QT]/.test(previous) && quadControl ? { x: 2 * current.x - quadControl.x, y: 2 * current.y - quadControl.y } : current; end = point(0); bezier([current, a, end].map(transform)); quadControl = a; break; }
-          case 'A': end = point(5); if (n[0] < 0 || n[1] < 0 || ![0, 1].includes(n[3]) || ![0, 1].includes(n[4])) fail('Invalid SVG path arc.'); curve(`A${n[0]} ${n[1]} ${n[2]} ${n[3]} ${n[4]} ${end.x} ${end.y}`, end); break;
+          case 'C': { const a = point(0), b = point(2); end = point(4); bezier([current, a, b, end].map(transform)); cubic(a, b, end); cubicControl = b; break; }
+          case 'S': { const a = /[CS]/.test(previous) && cubicControl ? { x: 2 * current.x - cubicControl.x, y: 2 * current.y - cubicControl.y } : current; const b = point(0); end = point(2); bezier([current, a, b, end].map(transform)); cubic(a, b, end); cubicControl = b; break; }
+          case 'Q': { const a = point(0); end = point(2); bezier([current, a, end].map(transform)); quad(a, end); quadControl = a; break; }
+          case 'T': { const a: Point = /[QT]/.test(previous) && quadControl ? { x: 2 * current.x - quadControl.x, y: 2 * current.y - quadControl.y } : current; end = point(0); bezier([current, a, end].map(transform)); quad(a, end); quadControl = a; break; }
+          case 'A': end = point(5); if (n[0] < 0 || n[1] < 0 || ![0, 1].includes(n[3]) || ![0, 1].includes(n[4])) fail('Invalid SVG path arc.'); curve(`A${n[0]} ${n[1]} ${n[2]} ${n[3]} ${n[4]} ${end.x} ${end.y}`, end); exact.set(contour, null); break;
           default: return fail('Unsupported SVG path command.');
         }
+        if ('LHV'.includes(upper) && (end.x !== current.x || end.y !== current.y)) line(end);
         current = end;
       }
       if (!['C', 'S'].includes(upper)) cubicControl = undefined;
       if (!['Q', 'T'].includes(upper)) quadControl = undefined;
       previous = upper;
     }
+    for (const c of contours) { const e = exact.get(c); if (e?.curved) c.curve = { start: e.start, segs: e.segs }; }
     return contours.filter(c => c.points.length >= 2);
   }
   function visit(el: Element, inherited: DOMMatrix, depth: number) {

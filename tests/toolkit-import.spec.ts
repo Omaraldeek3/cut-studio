@@ -222,3 +222,18 @@ test('imported circles, rounded rectangles and Béziers export as arcs and lines
   expect((rect.match(/ L/g) || []).length).toBe(4);
   expect((wave.match(/ [LAC]/g) || []).length).toBeLessThan(drawing.shapes[2].contours[0].points.length / 3);
 });
+test('Bezier paths keep their exact curves, so cleanup and export do not multiply nodes', async ({ page }) => {
+  const drawing = await parse(page, svg('<g transform="scale(2)"><path d="M0 0 C0 10 10 10 10 0 Q15 -10 20 0 L20 10 Z"/></g><path d="M40 40 A5 5 0 0 1 50 40"/>'));
+  const [bezier, arc] = drawing.shapes.map(s => s.contours[0]);
+  const round = (v: unknown) => JSON.parse(JSON.stringify(v, (_, x) => (typeof x === 'number' ? Math.round(x * 1e9) / 1e9 : x)));
+  expect(round(bezier.curve)).toEqual(round({ start: { x: 0, y: 0 }, segs: [
+    { type: 'C', c1: { x: 0, y: 20 }, c2: { x: 20, y: 20 }, to: { x: 20, y: 0 } },
+    { type: 'C', c1: { x: 20 + 20 / 3, y: -40 / 3 }, c2: { x: 40 - 20 / 3, y: -40 / 3 }, to: { x: 40, y: 0 } },
+    { type: 'L', to: { x: 40, y: 20 } },
+  ] }));
+  expect(bezier.points.length).toBeGreaterThan(10);
+  // Elliptical arcs are not stored exactly; their polyline is refitted on export as before.
+  expect(arc.curve).toBeUndefined();
+  const svgOut = toSvg(drawing);
+  expect(svgOut).toContain('C0 20 20 20 20 0');
+});

@@ -1,5 +1,5 @@
 'use client';
-import { useId } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Drawing } from './types';
 import type { Language, ToolId } from './copy';
 import { tx } from './copy';
@@ -17,15 +17,43 @@ export function Range({label,value,onChange,min,max,step=1}:{label:string;value:
 export function ErrorNote({error}:{error:string}){return error?<div role="alert" className="error-note">{error}</div>:null;}
 export function Section({title,children,number}:{title:string;children:React.ReactNode;number?:string}){return <section className="control-section"><h3>{number&&<span>{number}</span>}{title}</h3>{children}</section>;}
 export function Stat({label,value,unit}:{label:string;value:React.ReactNode;unit?:string}){return <div className="stat"><span>{label}</span><strong>{value}<small>{unit}</small></strong></div>;}
-export function VectorPreview({drawing,lang,filled=false,caption,labels}:{drawing:Drawing|null;lang:Language;filled?:boolean;caption?:string;labels?:{x:number;y:number;value:string}[]}){
+type View={x:number;y:number;w:number;h:number};
+/** Where a contour's nodes are: the ends of its exact segments, or its points. */
+function nodesOf(d:Drawing){const out:{x:number;y:number}[]=[];for(const s of d.shapes)for(const c of s.contours){if(c.pen)continue;if(c.curve){if(!c.closed||!c.curve.segs.length)out.push(c.curve.start);for(const g of c.curve.segs)out.push(g.to);}else out.push(...c.points);}return out;}
+export function VectorPreview({drawing,lang,filled=false,caption,labels,nodes=false}:{drawing:Drawing|null;lang:Language;filled?:boolean;caption?:string;labels?:{x:number;y:number;value:string}[];nodes?:boolean}){
  const colors=['#d78155','#a5ba9a','#e1bb5d','#8fa6bc','#c7aac0','#e0a58b'];
- return <div className="preview-surface"><div className="preview-top"><span><Icon name="grid" size={15}/> {tx(lang,'ARTBOARD','لوحة العمل')}</span><b dir="ltr">{drawing?`${drawing.width.toFixed(1)} × ${drawing.height.toFixed(1)} mm`:'—'}</b></div><div className="paper-stage">{drawing&&drawing.width>0&&drawing.height>0?<svg className="vector-paper" viewBox={`0 0 ${drawing.width} ${drawing.height}`} style={{aspectRatio:`${drawing.width}/${drawing.height}`}} role="img" aria-label={tx(lang,'Vector artwork preview','معاينة حدود التصميم')}>
+ const W=drawing?.width??1,H=drawing?.height??1;
+ // Zoom and pan, kept per artboard size; the view keeps the artboard's proportions.
+ const [zoom,setZoom]=useState<{w:number;h:number;view:View}|null>(null);
+ const v=zoom&&zoom.w===W&&zoom.h===H?zoom.view:{x:0,y:0,w:W,h:H};
+ const svg=useRef<SVGSVGElement>(null),drag=useRef<{x:number;y:number;view:View}|null>(null);
+ const fit=(view:View):View=>{const w=Math.min(W,Math.max(W/400,view.w)),h=w*H/W;return {w,h,x:Math.min(W-w,Math.max(0,view.x)),y:Math.min(H-h,Math.max(0,view.y))};};
+ const zoomAt=(factor:number,fx=0.5,fy=0.5)=>setZoom(z=>{const c=z&&z.w===W&&z.h===H?z.view:{x:0,y:0,w:W,h:H},w=c.w*factor,h=w*H/W;return {w:W,h:H,view:fit({x:c.x+(c.w-w)*fx,y:c.y+(c.h-h)*fy,w,h})};});
+ useEffect(()=>{const el=svg.current;if(!el)return;
+  // The wheel zooms once nodes are shown or the view is zoomed; otherwise it scrolls the page.
+  const wheel=(e:WheelEvent)=>{if(!nodes&&!e.ctrlKey&&v.w>=W-1e-9)return;e.preventDefault();const r=el.getBoundingClientRect();zoomAt(Math.exp(e.deltaY*0.0015),(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height);};
+  el.addEventListener('wheel',wheel,{passive:false});return ()=>el.removeEventListener('wheel',wheel);
+ });
+ // Node squares stay 5 px on screen at any zoom.
+ const [px,setPx]=useState(600);
+ useEffect(()=>{const el=svg.current;if(!el||typeof ResizeObserver==='undefined')return;const o=new ResizeObserver(()=>{if(el.clientWidth)setPx(el.clientWidth);});o.observe(el);return ()=>o.disconnect();},[drawing]);
+ const marks=useMemo(()=>drawing&&nodes?nodesOf(drawing):[],[drawing,nodes]);
+ const shown=useMemo(()=>{const k=v.w*5/px;const inside=marks.filter(p=>p.x>=v.x-k&&p.x<=v.x+v.w+k&&p.y>=v.y-k&&p.y<=v.y+v.h+k);
+  // Too many to tell apart (more than one per 24 × 24 px): ask for a closer look instead.
+  return inside.length>px*px*H/W/576?null:inside.map(p=>`M${(p.x-k/2).toFixed(3)} ${(p.y-k/2).toFixed(3)}h${k.toFixed(3)}v${k.toFixed(3)}h${(-k).toFixed(3)}z`).join('');},[marks,px,H,W,v.x,v.y,v.w,v.h]);
+ const zoomed=v.w<W-1e-9;
+ return <div className="preview-surface"><div className="preview-top"><span><Icon name="grid" size={15}/> {tx(lang,'ARTBOARD','لوحة العمل')}</span>{drawing&&<span className="zoom-tools"><button type="button" onClick={()=>zoomAt(1/1.6)} aria-label={tx(lang,'Zoom in','تكبير')}>+</button><button type="button" onClick={()=>zoomAt(1.6)} disabled={!zoomed} aria-label={tx(lang,'Zoom out','تصغير')}>−</button><button type="button" onClick={()=>setZoom(null)} disabled={!zoomed}>{tx(lang,'Fit','ملاءمة')}</button></span>}<b dir="ltr">{drawing?`${drawing.width.toFixed(1)} × ${drawing.height.toFixed(1)} mm`:'—'}</b></div><div className="paper-stage">{drawing&&drawing.width>0&&drawing.height>0?<svg ref={svg} className={`vector-paper${zoomed?' zoomed':''}`} viewBox={`${v.x} ${v.y} ${v.w} ${v.h}`} style={{aspectRatio:`${drawing.width}/${drawing.height}`}} role="img" aria-label={tx(lang,'Vector artwork preview','معاينة حدود التصميم')}
+  onDoubleClick={()=>setZoom(null)}
+  onPointerDown={e=>{if(!zoomed)return;e.currentTarget.setPointerCapture(e.pointerId);drag.current={x:e.clientX,y:e.clientY,view:v};}}
+  onPointerMove={e=>{const d=drag.current;if(!d)return;const r=e.currentTarget.getBoundingClientRect();setZoom({w:W,h:H,view:fit({...d.view,x:d.view.x-(e.clientX-d.x)/r.width*d.view.w,y:d.view.y-(e.clientY-d.y)/r.height*d.view.h})});}}
+  onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}}>
   <rect width={drawing.width} height={drawing.height} fill="#fffcf5"/>
   {drawing.shapes.map((s,i)=><path key={s.id} d={pathData(s)} fill={filled?colors[i%colors.length]:'none'} fillRule="evenodd" stroke={filled?'#334038':'#c76a44'} strokeWidth={filled?0.7:1} vectorEffect="non-scaling-stroke"/>)}
   {drawing.shapes.filter(s=>s.contours.some(c=>c.layer==='engrave'&&!c.pen)).map(s=><path key={`${s.id}-engrave`} d={pathData({...s,contours:s.contours.filter(c=>!c.pen)},'engrave')} fill="none" stroke="#2f5db8" strokeWidth={0.8} vectorEffect="non-scaling-stroke"/>)}
   {drawing.shapes.flatMap(s=>s.contours.flatMap((c,j)=>c.pen?[<path key={`${s.id}-pen-${j}`} d={pathData({...s,contours:[c]},c.layer==='engrave'?'engrave':'cut')} fill={c.closed?c.pen.rgb:'none'} fillOpacity={0.85} stroke="#334038" strokeWidth={0.4} vectorEffect="non-scaling-stroke"/>]:[]))}
   {labels?.map((l,i)=><text key={i} x={l.x} y={l.y+4} fontSize="4" fill="#476481" fontFamily="monospace">{l.value}</text>)}
- </svg>:<div className="empty-preview"><Icon name="trace" size={42}/><p>{tx(lang,'Your preview will appear here','ستظهر المعاينة هنا')}</p></div>}</div><div className="preview-bottom"><span><i/>{caption||tx(lang,'Physical dimensions · millimetres','أبعاد فعلية · ملليمتر')}</span><span dir="ltr">1:1 EXPORT</span></div></div>;
+  {shown&&<path className="node-marks" d={shown} fill="#fff" stroke="#1d7fd6" strokeWidth={1} vectorEffect="non-scaling-stroke"/>}
+ </svg>:<div className="empty-preview"><Icon name="trace" size={42}/><p>{tx(lang,'Your preview will appear here','ستظهر المعاينة هنا')}</p></div>}</div><div className="preview-bottom"><span><i/>{nodes&&drawing?(shown===null?tx(lang,`${marks.length} nodes · zoom in (+ or scroll) to see them`,`${marks.length} نقطة · كبّر (+ أو عجلة الفأرة) لرؤيتها`):tx(lang,`${marks.length} nodes · scroll to zoom, drag to move`,`${marks.length} نقطة · كبّر بعجلة الفأرة واسحب للتحريك`)):caption||tx(lang,'Physical dimensions · millimetres','أبعاد فعلية · ملليمتر')}</span><span dir="ltr">1:1 EXPORT</span></div></div>;
 }
 export function Exports({drawing,name='cut-studio',lang,disabled=false,extra}:{drawing:Drawing|null;name?:string;lang:Language;disabled?:boolean;extra?:React.ReactNode}){
  const save=(format:'svg'|'dxf')=>{if(drawing)download(format==='svg'?toSvg(drawing):toDxf(drawing),`${name}.${format}`,format==='svg'?'image/svg+xml':'application/dxf');};

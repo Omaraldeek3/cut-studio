@@ -28,3 +28,15 @@ test('cleanup warns about open paths instead of calling the file ready',async({p
  await page.getByRole('button',{name:'Apply cleanup',exact:true}).click();
  await expect(page.getByRole('status')).toContainText('1 open paths remain');
 });
+test('cleanup preview shows the nodes, before and after, and zooms in to them',async({page})=>{
+ // A nearly straight edge of twenty cubics, then three corners.
+ const wobble=Array.from({length:20},(_,i)=>`C${i*4+1.2} 10.2 ${i*4+2.8} 9.8 ${i*4+4} 10`).join(' ');
+ const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100"><path d="M0 10 ${wobble} L80 60 L0 60 Z"/></svg>`;
+ await page.goto('/en/vector-cleanup');await page.getByLabel('Import vector file').setInputFiles({name:'wobble.svg',mimeType:'image/svg+xml',buffer:Buffer.from(svg)});
+ await page.getByRole('button',{name:'Apply cleanup',exact:true}).click();
+ const caption=page.locator('.preview-bottom');
+ await expect(caption).toContainText('3 nodes');await expect(page.locator('.node-marks')).toHaveCount(1);
+ await page.getByRole('button',{name:'Original',exact:true}).click();await expect(caption).toContainText('22 nodes');
+ await page.getByRole('button',{name:'Zoom in',exact:true}).click();await expect(page.locator('.vector-paper')).toHaveClass(/zoomed/);
+ await page.getByRole('button',{name:'Show nodes',exact:true}).click();await expect(page.locator('.node-marks')).toHaveCount(0);
+});

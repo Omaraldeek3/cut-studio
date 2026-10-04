@@ -47,7 +47,9 @@ export function shapesCollide(a:Shape,b:Shape,gap:number):boolean {
   return false;
 }
 const NEST_NODE_BUDGET=8000;
-export const MAX_NEST_PIECES=500;
+export const MAX_NEST_PIECES=5000;
+/** Above this many pieces, parts are packed by their bounding rectangles. */
+export const OUTLINE_NEST_MAX=150;
 const SIMPLIFY_STEPS=[0,0.05,0.1,0.2,0.35,0.5,0.75,1,1.5,2];
 function boxOf(points:Point[]):Bounds{let x=Infinity,y=Infinity,right=-Infinity,bottom=-Infinity;for(const p of points){x=Math.min(x,p.x);y=Math.min(y,p.y);right=Math.max(right,p.x);bottom=Math.max(bottom,p.y);}return {x,y,width:right-x,height:bottom-y};}
 function boxWithin(inner:Bounds,outer:Bounds){return inner.x>=outer.x&&inner.y>=outer.y&&inner.x+inner.width<=outer.x+outer.width&&inner.y+inner.height<=outer.y+outer.height;}
@@ -90,11 +92,38 @@ function outerRings(shape:Shape):Point[][]{
   if(stray.some(c=>c.points.length&&!covered(c.points)))return [convexHull(shape.contours.flatMap(c=>c.points))];
   return outers.map(o=>o.c.points);
 }
+/** One shape per separate piece. A compound path can hold many pieces (a
+ *  traced layer of 1,000 buildings is often a single path): each outline at an
+ *  even depth is a piece, with the holes directly inside it, and every other
+ *  line goes with the smallest piece whose material it starts on. */
+function separateParts(shape:Shape):Shape[]{
+  const rings=shape.contours.filter(c=>c.closed&&c.layer!=='engrave'&&c.points.length>=3&&Math.abs(signedArea(c.points))>=0.001);
+  if(rings.length<2)return [shape];
+  const box=rings.map(c=>boxOf(c.points)),area=rings.map(c=>Math.abs(signedArea(c.points)));
+  const holds=(i:number,p:Point)=>p.x>=box[i].x&&p.x<=box[i].x+box[i].width&&p.y>=box[i].y&&p.y<=box[i].y+box[i].height&&inside(p,rings[i].points);
+  // Rings that contain each ring, smallest first: its parent is the first.
+  const around=rings.map((c,i)=>rings.map((_,j)=>j).filter(j=>j!==i&&area[j]>area[i]&&holds(j,c.points[0])).sort((a,b)=>area[a]-area[b]));
+  const outers=rings.map((_,i)=>i).filter(i=>around[i].length%2===0);
+  if(outers.length<2)return [shape];
+  const pieces=new Map(outers.map(i=>[i,[rings[i]] as Contour[]]));
+  rings.forEach((c,i)=>{if(around[i].length%2===1)pieces.get(around[i][0])!.push(c);});
+  const ringSet=new Set(rings),rest:Contour[]=[];
+  for(const c of shape.contours){
+    if(ringSet.has(c))continue;
+    const p=c.points[0];
+    // The innermost ring around the line's start decides: a piece's outline means its material.
+    const host=p?rings.map((_,j)=>j).filter(j=>holds(j,p)).sort((a,b)=>area[a]-area[b])[0]:undefined;
+    if(host!==undefined&&pieces.has(host))pieces.get(host)!.push(c);else rest.push(c);
+  }
+  const out=[...pieces.values()].map((contours,k)=>({...shape,id:`${shape.id}-${k+1}`,name:`${shape.name} ${k+1}`,contours}));
+  return rest.length?[...out,{...shape,id:`${shape.id}-rest`,contours:rest}]:out;
+}
 /** Parts as a cutting job sees them. A shape that lies on another part's
  *  material (an engraving, a hole or a line drawn as its own element) travels
  *  with that part. What lies on no part and has no closed cut outline of its
  *  own cannot be placed: it is left out and counted. */
-export function partsForNesting(d:Drawing):{drawing:Drawing;loose:number}{
+export function partsForNesting(source:Drawing):{drawing:Drawing;loose:number}{
+  const d={...source,shapes:source.shapes.flatMap(separateParts)};
   const info=d.shapes.map(s=>{
     const rings=s.contours.filter(c=>c.closed&&c.layer!=='engrave'&&c.points.length>=3&&Math.abs(signedArea(c.points))>=0.001);
     return {rings,box:boxOf(s.contours.flatMap(c=>c.points)),area:rings.reduce((a,c)=>Math.max(a,Math.abs(signedArea(c.points))),0)};
@@ -187,6 +216,57 @@ function outlinesCollide(a:Outline,dx:number,dy:number,b:Outline,gap:number){
 }
 const empty:Outline={rings:[],box:{x:Infinity,y:Infinity,width:0,height:0}};
 type Placement={kind:number;angle:number;x:number;y:number;id:string;name:string;outline:Outline;box:Bounds};
+type Rect={x:number;y:number;w:number;h:number};
+/** Packs each piece's bounding rectangle (turned 90° when rotation is allowed)
+ *  with MaxRects, best short side fit, biggest pieces first. Every rectangle is
+ *  grown by the spacing, and the usable sheet by the same, so neighbours keep
+ *  the spacing and the edge keeps the margin. */
+function packByBounds(shapes:Shape[],counts:number[],o:NestOptions,start:number):NestResult{
+  shapes.forEach(outerRings);
+  const margin=o.margin+TOLERANCE,gap=o.gap+2*TOLERANCE+0.001,W=o.width-2*margin+gap,H=o.height-2*margin+gap;
+  const kinds=shapes.map(shape=>{
+    const b=bounds(shape),sizes=[{angle:0,w:b.width+gap,h:b.height+gap}];
+    if(o.rotate&&Math.abs(b.width-b.height)>1e-9)sizes.push({angle:90,w:b.height+gap,h:b.width+gap});
+    return {shape,area:shapeArea(shape),sizes:sizes.filter(z=>z.w<=W+1e-9&&z.h<=H+1e-9)};
+  });
+  const instances=shapes.flatMap((s,kind)=>Array.from({length:counts[kind]},(_,i)=>({kind,id:`${s.id}-${i}`,name:s.name})));
+  const side=(kind:number)=>{const z=kinds[kind].sizes[0];return z?Math.max(z.w,z.h):0;};
+  instances.sort((a,b)=>side(b.kind)-side(a.kind)||kinds[b.kind].area-kinds[a.kind].area);
+  const sheets:{free:Rect[];placed:{kind:number;angle:number;x:number;y:number;id:string;name:string}[]}[]=[],unplaced:string[]=[];let area=0;
+  const within=(a:Rect,b:Rect)=>a.x>=b.x-1e-9&&a.y>=b.y-1e-9&&a.x+a.w<=b.x+b.w+1e-9&&a.y+a.h<=b.y+b.h+1e-9;
+  for(const item of instances){
+    const sizes=kinds[item.kind].sizes;
+    if(!sizes.length){unplaced.push(item.name);continue;}
+    let done=false;
+    for(let k=0;k<=sheets.length&&!done;k++){
+      if(k===sheets.length)sheets.push({free:[{x:0,y:0,w:W,h:H}],placed:[]});
+      const sheet=sheets[k];
+      let best:{r:Rect;z:(typeof sizes)[number]}|null=null,bestShort=Infinity,bestLong=Infinity;
+      for(const r of sheet.free)for(const z of sizes){
+        if(z.w>r.w+1e-9||z.h>r.h+1e-9)continue;
+        const short=Math.min(r.w-z.w,r.h-z.h),long=Math.max(r.w-z.w,r.h-z.h);
+        if(short<bestShort||(short===bestShort&&long<bestLong)){best={r,z};bestShort=short;bestLong=long;}
+      }
+      if(!best)continue;
+      const used={x:best.r.x,y:best.r.y,w:best.z.w,h:best.z.h};
+      // Split every free rectangle the new piece overlaps into the parts around it.
+      const next:Rect[]=[];
+      for(const f of sheet.free){
+        if(used.x>=f.x+f.w||used.x+used.w<=f.x||used.y>=f.y+f.h||used.y+used.h<=f.y){next.push(f);continue;}
+        if(used.x>f.x)next.push({x:f.x,y:f.y,w:used.x-f.x,h:f.h});
+        if(used.x+used.w<f.x+f.w)next.push({x:used.x+used.w,y:f.y,w:f.x+f.w-used.x-used.w,h:f.h});
+        if(used.y>f.y)next.push({x:f.x,y:f.y,w:f.w,h:used.y-f.y});
+        if(used.y+used.h<f.y+f.h)next.push({x:f.x,y:used.y+used.h,w:f.w,h:f.y+f.h-used.y-used.h});
+      }
+      sheet.free=next.filter((a,i)=>a.w>1e-6&&a.h>1e-6&&!next.some((b,j)=>j!==i&&within(a,b)&&(!within(b,a)||j<i)));
+      sheet.placed.push({kind:item.kind,angle:best.z.angle,x:margin+used.x,y:margin+used.y,id:item.id,name:item.name});
+      area+=kinds[item.kind].area;done=true;
+    }
+    if(!done)unplaced.push(item.name);
+  }
+  const out=sheets.filter(s=>s.placed.length).map(s=>s.placed.map(p=>({...moveShape(normalize(kinds[p.kind].shape,p.angle),p.x,p.y),id:p.id,name:p.name})));
+  return {sheets:out,unplaced,total:instances.length,area,elapsed:Date.now()-start,outlineTolerance:0,byBounds:true};
+}
 export function nest(allShapes:Shape[],o:NestOptions):NestResult {
   const start=Date.now(); finite(o.width,1,3000,'Sheet width');finite(o.height,1,3000,'Sheet height');finite(o.margin,0,100,'Margin');finite(o.gap,0,100,'Spacing');
   const allCounts=o.counts??allShapes.map(()=>o.copies);
@@ -195,6 +275,9 @@ export function nest(allShapes:Shape[],o:NestOptions):NestResult {
   // A part with a quantity of 0 is left out of the job altogether.
   const shapes=allShapes.filter((_,i)=>allCounts[i]>0),counts=allCounts.filter(c=>c>0),pieces=counts.reduce((a,b)=>a+b,0);
   if(!pieces||pieces>MAX_NEST_PIECES)throw new Error(`Use 1–${MAX_NEST_PIECES} total parts.`);
+  // Fitting outlines against each other grows with the square of the piece
+  // count; rectangles pack thousands of pieces in about a second.
+  if(pieces>OUTLINE_NEST_MAX)return packByBounds(shapes,counts,o,start);
   // Dense artwork is nested with simplified outer outlines. The simplification
   // tolerance is added to both sides of every gap, so the full-detail parts
   // placed from these outlines still keep the requested spacing.

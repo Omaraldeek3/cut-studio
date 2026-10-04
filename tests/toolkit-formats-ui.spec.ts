@@ -70,3 +70,12 @@ test('long figures in stat tiles shrink to fit instead of being cut off, on a ph
   expect(cut).toEqual([]);
  }
 });
+test('a layer of 400 pieces in one path arranges in the browser',async({page})=>{
+ const d=Array.from({length:400},(_,i)=>{const x=(i%20)*20,y=Math.floor(i/20)*20,w=4+(i*7)%11,h=4+(i*5)%9;return `M${x} ${y}h${w}v${h}h${-w}Z`;}).join('');
+ const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="400mm" height="400mm" viewBox="0 0 400 400"><path d="${d}"/></svg>`;
+ await page.goto('/en/nesting');await page.getByLabel('Import vector file').setInputFiles({name:'layer.svg',mimeType:'image/svg+xml',buffer:Buffer.from(svg)});
+ await expect(page.getByText('400 pieces in this job',{exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Arrange parts',exact:true}).click();await expect(page.getByText('Layout ready',{exact:true})).toBeVisible({timeout:20000});
+ await expect(page.locator('.stats-row')).toContainText('400 / 400');
+ await expect(page.locator('.tip-card').last()).toContainText('bounding rectangle');
+});

@@ -111,3 +111,41 @@ test('engravings and holes drawn as their own shapes travel with the part they l
   const box = bounds(placed), logo = placed.contours.find(c => c.layer === 'engrave' && c.closed)!;
   for (const p of logo.points) { expect(p.x).toBeGreaterThan(box.x); expect(p.x).toBeLessThan(box.x + box.width); }
 });
+test('a compound path of many separate pieces nests as separate parts, holes and marks kept', () => {
+  const sq = (x: number, y: number, w: number) => ({ closed: true, points: [{ x, y }, { x: x + w, y }, { x: x + w, y: y + w }, { x, y: y + w }] });
+  const layer: Shape = { id: 'layer', name: 'buildings', contours: [
+    sq(0, 0, 30), sq(10, 10, 10), sq(13, 13, 4), // a piece, its hole, and an island in the hole
+    sq(50, 0, 20), sq(80, 0, 20),
+    { closed: false, layer: 'engrave', points: [{ x: 52, y: 5 }, { x: 60, y: 5 }] },
+  ] };
+  const { drawing } = partsForNesting({ width: 120, height: 40, shapes: [layer] });
+  expect(drawing.shapes).toHaveLength(4);
+  const sizes = drawing.shapes.map(s => s.contours.length).sort();
+  expect(sizes).toEqual([1, 1, 2, 2]);
+  const marked = drawing.shapes.find(s => s.contours.some(c => c.layer === 'engrave'))!;
+  expect(bounds(marked).x).toBe(50);
+});
+
+test('a big job of hundreds of parts packs quickly, without overlaps, inside the margins', () => {
+  // 900 pieces from one compound layer, of random sizes: too many to fit outline by outline.
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const contours = Array.from({ length: 900 }, (_, i) => { const x = (i % 30) * 40, y = Math.floor(i / 30) * 40, w = 3 + rnd() * 25, h = 3 + rnd() * 25; return { closed: true, points: [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }] }; });
+  const { drawing } = partsForNesting({ width: 1200, height: 1200, shapes: [{ id: 'layer', name: 'layer', contours }] });
+  expect(drawing.shapes).toHaveLength(900);
+  const o = { width: 500, height: 700, margin: 5, gap: 3, copies: 1, rotate: true };
+  const started = Date.now(), r = nest(drawing.shapes, o);
+  expect(Date.now() - started).toBeLessThan(10000);
+  expect(r.byBounds).toBe(true);
+  expect(r.unplaced).toEqual([]);
+  expect(r.sheets.flat()).toHaveLength(900);
+  let outside = 0, touching = 0;
+  for (const sheet of r.sheets) {
+    const boxes = sheet.map(bounds);
+    for (const b of boxes) if (b.x < 5 || b.y < 5 || b.x + b.width > 495 || b.y + b.height > 695) outside++;
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      if (!(a.x + a.width + 3 <= b.x + 1e-6 || b.x + b.width + 3 <= a.x + 1e-6 || a.y + a.height + 3 <= b.y + 1e-6 || b.y + b.height + 3 <= a.y + 1e-6)) touching++;
+    }
+  }
+  expect({ outside, touching }).toEqual({ outside: 0, touching: 0 });
+});

@@ -14,4 +14,5 @@ export type Bounds = { x: number; y: number; width: number; height: number };
 /** counts, when given, is the quantity of each shape by index (0 leaves it
  *  out) and replaces copies. */
 export type NestOptions = { width: number; height: number; margin: number; gap: number; copies: number; rotate: boolean; counts?: number[] };
-export type NestResult = { sheets: Shape[][]; unplaced: string[]; total: number; area: number; elapsed: number; outlineTolerance: number };
+/** `byBounds`: the parts were packed by their bounding rectangles, as in jobs too big for outline nesting. */
+export type NestResult = { sheets: Shape[][]; unplaced: string[]; total: number; area: number; elapsed: number; outlineTolerance: number; byBounds?: boolean };

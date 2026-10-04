@@ -20,9 +20,11 @@ test('all workspaces expose working outputs and calculated values',async({page})
   await page.getByText('Time it from the artwork',{exact:true}).click();
   await page.getByLabel('Quantity').fill('10');await page.getByLabel('Sheet price').fill('50');await page.getByLabel('Sheets used').fill('2');
   await page.getByLabel('Machine time for the whole job').fill('30');await page.getByLabel('Machine rate per hour').fill('20');
-  await page.getByLabel('Labour and extras for the job').fill('0');await page.getByLabel('Overhead').fill('0');await page.getByLabel('Profit').fill('10');
+  await page.getByLabel('Labour and extras for the job').fill('0');await page.getByLabel('Overhead').fill('0');await page.getByRole('spinbutton',{name:'Profit'}).fill('10');
   await expect(page.getByTestId('quote-total')).toHaveText('121.00');
   await expect(page.getByTestId('quote-each')).toHaveText('12.10 ILS');
+  // A 10% margin on a cost of 110: 110 / 0.9.
+  await page.getByRole('button',{name:'The selling price',exact:true}).click();await expect(page.getByTestId('quote-total')).toHaveText('122.22');
   await page.getByRole('link',{name:'Fit test',exact:true}).click();await expect(page.getByRole('button',{name:'Export DXF',exact:true})).toBeEnabled();
   await page.getByRole('link',{name:'Vector cleanup',exact:true}).click();await page.getByRole('button',{name:'Apply cleanup',exact:true}).click();await expect(page.getByRole('button',{name:'Export SVG',exact:true})).toBeEnabled();
 });

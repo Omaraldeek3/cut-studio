@@ -51,6 +51,8 @@ export function QuoteWorkspace(props: Props) {
       <Toggle label={tx(lang, 'Time it from the artwork', 'احسبه من التصميم')} value={timed} onChange={setTimed}/>
       {timed ? <>
         <VectorInput {...props}/>
+        <div className="field"><span>{tx(lang, 'The file holds', 'الملف يحتوي')}</span><div className="sheet-tabs" role="group" aria-label={tx(lang, 'The file holds', 'الملف يحتوي')}>{([['piece', tx(lang, 'One piece', 'قطعة واحدة')], ['order', tx(lang, 'The whole order', 'الطلب كاملاً')]] as const).map(([k, label]) => <button key={k} type="button" className={o.artwork === k ? 'selected' : ''} aria-pressed={o.artwork === k} onClick={() => set('artwork')(k)}>{label}</button>)}</div></div>
+        <p className="micro">{o.artwork === 'piece' ? tx(lang, `Machine time is the file's time × ${q?.copies ?? o.copies} pieces.`, `وقت الماكينة = وقت الملف × ${q?.copies ?? o.copies} قطعة.`) : tx(lang, 'The file already holds every piece: its time is the whole job, and the quantity only divides the price.', 'الملف يحتوي كل القطع: وقته هو وقت العمل كله، والكمية تقسم السعر فقط.')}</p>
         <div className="field-pair"><NumberField label={tx(lang, 'Cut speed', 'سرعة القص')} value={o.cutSpeed} onChange={set('cutSpeed')} min={0.1} step={0.5} unit="mm/s"/><NumberField label={tx(lang, 'Engrave speed', 'سرعة الحفر')} value={o.engraveSpeed} onChange={set('engraveSpeed')} min={0.1} unit="mm/s"/></div>
         <div className="field-pair"><NumberField label={tx(lang, 'Pierce time', 'زمن الثقب')} value={o.pierce} onChange={set('pierce')} step={0.1} unit="s"/><NumberField label={tx(lang, 'Travel allowance', 'هامش الحركة')} value={o.travel} onChange={set('travel')} max={300} unit="%"/></div>
       </> : <NumberField label={tx(lang, 'Machine time for the whole job', 'وقت الماكينة للعمل كله')} value={o.minutes} onChange={set('minutes')} max={1e6} unit="min"/>}
@@ -58,7 +60,9 @@ export function QuoteWorkspace(props: Props) {
     </Section>
     <Section title={tx(lang, 'Labour and margin', 'العمل والربح')} number="04">
       <NumberField label={tx(lang, 'Labour and extras for the job', 'أجرة العمل والإضافات للعمل كله')} value={o.labour} onChange={set('labour')} max={1e7} step={0.5} unit={currency}/>
-      <div className="field-pair"><NumberField label={tx(lang, 'Overhead', 'مصاريف عامة')} value={o.overhead} onChange={set('overhead')} max={1000} unit="%"/><NumberField label={tx(lang, 'Profit', 'الربح')} value={o.profit} onChange={set('profit')} max={1000} unit="%"/></div>
+      <div className="field-pair"><NumberField label={tx(lang, 'Overhead', 'مصاريف عامة')} value={o.overhead} onChange={set('overhead')} max={1000} unit="%"/><NumberField label={tx(lang, 'Profit', 'الربح')} value={o.profit} onChange={set('profit')} max={o.profitMode === 'margin' ? 95 : 1000} unit="%"/></div>
+      <div className="field"><span>{tx(lang, 'Profit is a share of', 'الربح نسبة من')}</span><div className="sheet-tabs" role="group" aria-label={tx(lang, 'Profit is a share of', 'الربح نسبة من')}>{([['markup', tx(lang, 'The cost', 'التكلفة')], ['margin', tx(lang, 'The selling price', 'سعر البيع')]] as const).map(([k, label]) => <button key={k} type="button" className={o.profitMode === k ? 'selected' : ''} aria-pressed={o.profitMode === k} onClick={() => set('profitMode')(k)}>{label}</button>)}</div></div>
+      <p className="micro">{o.profitMode === 'markup' ? tx(lang, `A cost of 100 sells for ${(100 * (1 + o.profit / 100)).toFixed(2)}.`, `تكلفة ١٠٠ تُباع بـ ${(100 * (1 + o.profit / 100)).toFixed(2)}.`) : tx(lang, `${o.profit}% of the selling price is profit: a cost of 100 sells for ${o.profit < 100 ? (100 / (1 - o.profit / 100)).toFixed(2) : '—'}.`, `${o.profit}٪ من سعر البيع ربح: تكلفة ١٠٠ تُباع بـ ${o.profit < 100 ? (100 / (1 - o.profit / 100)).toFixed(2) : '—'}.`)}</p>
     </Section>
     <div className="control-action"><ErrorNote error={result.error} lang={lang}/></div>
   </aside>
@@ -76,7 +80,7 @@ export function QuoteWorkspace(props: Props) {
         <div><span>{tx(lang, 'Cost to you', 'التكلفة عليك')}</span><b dir="ltr">{q ? money(q.cost) : '—'}</b></div>
         <div><span>{tx(lang, 'Profit', 'الربح')} <small dir="ltr">{o.profit}%</small></span><b dir="ltr">{q ? money(q.profit) : '—'}</b></div>
       </div>
-      <div className="cost-formula">{tx(lang, '(material + machine + labour) × (1 + overhead) × (1 + profit)', '(الخامة + الماكينة + العمل) × (١ + المصاريف) × (١ + الربح)')}</div>
+      <div className="cost-formula">{o.profitMode === 'markup' ? tx(lang, '(material + machine + labour) × (1 + overhead) × (1 + profit)', '(الخامة + الماكينة + العمل) × (١ + المصاريف) × (١ + الربح)') : tx(lang, '(material + machine + labour) × (1 + overhead) ÷ (1 − profit)', '(الخامة + الماكينة + العمل) × (١ + المصاريف) ÷ (١ − الربح)')}</div>
       <pre className="quote-message" dir="auto">{message}</pre>
       <div className="quote-actions">
         <button className="button dark" disabled={!q} onClick={() => void copy()}><Icon name="check" size={17}/>{copied ? tx(lang, 'Copied', 'تم النسخ') : tx(lang, 'Copy the quote', 'انسخ عرض السعر')}</button>

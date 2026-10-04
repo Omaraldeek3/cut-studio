@@ -25,3 +25,16 @@ test('impossible numbers are refused', () => {
   expect(() => quote(null, { ...defaultQuote, copies: 0 })).toThrow(/Quantity/);
   expect(() => quote(null, { ...defaultQuote, profit: -5 })).toThrow(/Profit/);
 });
+test('artwork holding the whole order is timed once, not once per piece', () => {
+  const piece = quote(square, { ...defaultQuote, copies: 10, cutSpeed: 10, pierce: 1, travel: 0, rate: 3600 });
+  const order = quote(square, { ...defaultQuote, copies: 10, artwork: 'order', cutSpeed: 10, pierce: 1, travel: 0, rate: 3600 });
+  expect(piece.seconds).toBeCloseTo(410); expect(order.seconds).toBeCloseTo(41);
+  expect(order.perPiece).toBeCloseTo(order.total / 10);
+});
+test('profit can be a margin of the selling price instead of a markup on cost', () => {
+  const base = { ...defaultQuote, copies: 1, sheetPrice: 100, sheets: 1, minutes: 0, labour: 0, overhead: 0, profit: 30 };
+  expect(quote(null, base).total).toBeCloseTo(130);
+  const margin = quote(null, { ...base, profitMode: 'margin' });
+  expect(margin.total).toBeCloseTo(142.857, 2); expect(margin.profit / margin.total).toBeCloseTo(0.3);
+  expect(() => quote(null, { ...base, profitMode: 'margin', profit: 100 })).toThrow(/Profit must be between 0 and 95/);
+});

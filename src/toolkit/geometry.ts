@@ -1,6 +1,6 @@
 import type { Bounds, Contour, Drawing, NestOptions, NestResult, Point, Shape } from './types';
-import { mapCurve } from './path';
-import { fitPolyline } from './fit';
+import { flattenCurve, mapCurve } from './path';
+import { fitPolyline, straightenCurve } from './fit';
 
 export const TOLERANCE = 0.1;
 export function finite(value: number, min: number, max: number, name: string) {
@@ -298,7 +298,8 @@ export function cleanDrawing(d:Drawing,removeDuplicates:boolean,minArea:number){
 
 // ——— Repair: what "delete overlap" and "join" do in a cutting program ———
 
-export type RepairOptions = { overlaps: boolean; join: number; minArea: number; reduce: boolean };
+/** `simplify` is how far, in mm, reduced outlines may move: runs within it become one line or one curve. */
+export type RepairOptions = { overlaps: boolean; join: number; minArea: number; reduce: boolean; simplify?: number };
 export type RepairResult = { drawing: Drawing; overlapsRemovedMm: number; joined: number; tiny: number; nodesBefore: number; nodesAfter: number };
 
 const OVERLAP_EPS = 0.02;
@@ -423,6 +424,8 @@ function joinOpen(d: Drawing, limit: number): { drawing: Drawing; joined: number
  *  Engraved lines are left exactly as they are. */
 export function repairDrawing(d: Drawing, o: RepairOptions): RepairResult {
   finite(o.minArea, 0, 100, 'Minimum area'); finite(o.join, 0, 10, 'Join distance');
+  const simplify = o.simplify ?? 0.2;
+  if (o.reduce) finite(simplify, 0.01, 2, 'Simplify tolerance');
   const count = (x: Drawing) => x.shapes.reduce((sum, s) => sum + s.contours.filter(cutLayer).reduce((n, c) => n + nodesOf(c), 0), 0);
   const nodesBefore = count(d);
   let drawing = d, overlapsRemovedMm = 0, joined = 0, tiny = 0;
@@ -433,7 +436,13 @@ export function repairDrawing(d: Drawing, o: RepairOptions): RepairResult {
     if (small) tiny++;
     return !small;
   }) })).filter(s => s.contours.length) };
-  // Changed contours were rebuilt from their points and carry no curve; refit those.
-  if (o.reduce) drawing = { ...drawing, shapes: drawing.shapes.map(s => ({ ...s, contours: s.contours.map(c => (!cutLayer(c) || c.curve ? c : { ...c, curve: fitPolyline(c.points, c.closed, 0.02) })) })) };
+  // Contours without a curve (changed ones were rebuilt from points) are refitted
+  // first; then every cut outline drops the nodes its shape does not need.
+  if (o.reduce) drawing = { ...drawing, shapes: drawing.shapes.map(s => ({ ...s, contours: s.contours.map(c => {
+    if (!cutLayer(c)) return c;
+    const fitted = c.curve ?? fitPolyline(c.points, c.closed, 0.02), curve = straightenCurve(fitted, simplify);
+    if (curve.segs.length === fitted.segs.length) return c.curve ? c : { ...c, curve: fitted };
+    return { ...c, curve, points: flattenCurve(curve, c.closed, 0.05) };
+  }) })) };
   return { drawing, overlapsRemovedMm, joined, tiny, nodesBefore, nodesAfter: count(drawing) };
 }

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { fitPolyline } from '../src/toolkit/fit';
+import { fitPolyline, straightenCurve } from '../src/toolkit/fit';
 import { circle, roundedRect, gearDrawing, defaultGear, puzzleDrawing, defaultPuzzle } from '../src/toolkit/generators';
 import { flattenCurve } from '../src/toolkit/path';
 
@@ -46,4 +46,30 @@ test('a regular polygon stays a polygon, not a circle', () => {
   const twelve = Array.from({ length: 12 }, (_, i) => ({ x: 20 * Math.cos((i * Math.PI) / 6), y: 20 * Math.sin((i * Math.PI) / 6) }));
   const c = fitPolyline(twelve, true, 0.02);
   expect(c.segs).toHaveLength(12); expect(c.segs.every(s => s.type === 'L')).toBe(true);
+});
+
+test('a nearly straight run of many curves becomes one line, and corners stay', () => {
+  // A tracer's wobbly edge: twenty small cubics off the x axis by about 0.04 mm, then a corner.
+  const segs = Array.from({ length: 20 }, (_, i) => ({ type: 'C' as const, c1: { x: i * 5 + 1.5, y: 0.15 }, c2: { x: i * 5 + 3.5, y: -0.15 }, to: { x: i * 5 + 5, y: 0 } }));
+  const curve = { start: { x: 0, y: 0 }, segs: [...segs, { type: 'L' as const, to: { x: 100, y: 40 } }] };
+  const out = straightenCurve(curve, 0.1);
+  expect(out.segs).toEqual([{ type: 'L', to: { x: 100, y: 0 } }, { type: 'L', to: { x: 100, y: 40 } }]);
+  // Below the wobble nothing is merged.
+  expect(straightenCurve(curve, 0.01).segs).toHaveLength(21);
+});
+
+test('smooth runs merge into one cubic that stays within the tolerance', () => {
+  // A quarter circle of radius 50 drawn as eight short cubics.
+  const r = 50, n = 8, k = 4 / 3 * Math.tan(Math.PI / 2 / n / 4);
+  const p = (a: number) => ({ x: r * Math.cos(a), y: r * Math.sin(a) });
+  const segs = Array.from({ length: n }, (_, i) => {
+    const a0 = (i * Math.PI) / 2 / n, a1 = ((i + 1) * Math.PI) / 2 / n, s = p(a0), e = p(a1);
+    return { type: 'C' as const, c1: { x: s.x - k * s.y, y: s.y + k * s.x }, c2: { x: e.x + k * e.y, y: e.y - k * e.x }, to: e };
+  });
+  const curve = { start: p(0), segs };
+  const out = straightenCurve(curve, 0.05);
+  expect(out.segs.length).toBeLessThan(3);
+  const before = flattenCurve(curve, false, 0.005), after = flattenCurve(out, false, 0.005);
+  for (const q of after) expect(dist(q, before)).toBeLessThan(0.051);
+  for (const q of before) expect(dist(q, after)).toBeLessThan(0.051);
 });

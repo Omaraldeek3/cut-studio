@@ -1,5 +1,6 @@
 import type { Point } from './types';
 import type { Curve, Seg } from './path';
+import { flattenCurve } from './path';
 
 /* Turns a polyline back into the geometry it was sampled from: straight
    lines and circular arcs, which every cutting program reads natively.
@@ -119,4 +120,88 @@ export function fitPolyline(points: Point[], closed: boolean, tolerance: number)
   let from = 0;
   for (const to of cuts) { if (to > from) fitRun(ring.slice(from, to + 1), tolerance, segs); from = to; }
   return { start: ring[0], segs };
+}
+
+/** Simplifies an outline within `tolerance` mm. Every run of segments that
+ *  stays that close to one straight line becomes that line, so a nearly
+ *  straight stretch a tracer left full of nodes becomes two nodes; a run of
+ *  smooth curves becomes one cubic with the same end tangents. */
+export function straightenCurve(curve: Curve, tolerance: number): Curve {
+  // Checks run on samples, so they keep a margin under the promised tolerance.
+  const limit = tolerance * 0.9;
+  const n = curve.segs.length, ends = [curve.start, ...curve.segs.map(s => s.to)];
+  // Each segment as points along it, ending at its end; its start is ends[i].
+  const along = curve.segs.map((s, i) => flattenCurve({ start: ends[i], segs: [s] }, false, tolerance / 4).slice(1));
+  const unit = (x: number, y: number) => { const l = Math.hypot(x, y); return l > 1e-12 ? { x: x / l, y: y / l } : null; };
+  // Directions leaving a segment's start and entering its end.
+  const head = (i: number) => { const s = curve.segs[i], a = ends[i]; const q = s.type === 'C' ? (Math.hypot(s.c1.x - a.x, s.c1.y - a.y) > 1e-9 ? s.c1 : s.c2) : s.type === 'A' ? along[i][0] : s.to; return unit(q.x - a.x, q.y - a.y); };
+  const tail = (i: number) => { const s = curve.segs[i], b = s.to; const q = s.type === 'C' ? (Math.hypot(s.c2.x - b.x, s.c2.y - b.y) > 1e-9 ? s.c2 : s.c1) : s.type === 'A' ? (along[i].at(-2) ?? ends[i]) : ends[i]; return unit(b.x - q.x, b.y - q.y); };
+  const line = (i: number, j: number) => {
+    const a = ends[i], b = ends[j + 1], l = Math.hypot(b.x - a.x, b.y - a.y);
+    if (l < 1e-9) return false;
+    const slack = limit / l;
+    for (let k = i; k <= j; k++) for (const p of along[k]) {
+      if (Math.abs(cross(a, b, p)) / l > limit) return false;
+      const t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / (l * l);
+      if (t < -slack || t > 1 + slack) return false;
+    }
+    return true;
+  };
+  // One cubic through segments i..j, keeping both end tangents, or null.
+  const cubic = (i: number, j: number): Seg | null => {
+    for (let k = i; k < j; k++) { const a = tail(k), b = head(k + 1); if (!a || !b || a.x * b.x + a.y * b.y < CORNER) return null; }
+    const t1 = head(i), t2 = tail(j);
+    if (!t1 || !t2) return null;
+    const p0 = ends[i], p3 = ends[j + 1], pts = [p0];
+    for (let k = i; k <= j; k++) pts.push(...along[k]);
+    const u = [0];
+    for (let k = 1; k < pts.length; k++) u.push(u[k - 1] + Math.hypot(pts[k].x - pts[k - 1].x, pts[k].y - pts[k - 1].y));
+    const total = u[u.length - 1];
+    if (total < 1e-9) return null;
+    for (let k = 0; k < u.length; k++) u[k] /= total;
+    const at = (c1: Point, c2: Point, t: number) => { const m = 1 - t; return { x: m * m * m * p0.x + 3 * m * m * t * c1.x + 3 * m * t * t * c2.x + t * t * t * p3.x, y: m * m * m * p0.y + 3 * m * m * t * c1.y + 3 * m * t * t * c2.y + t * t * t * p3.y }; };
+    // Least-squares handle lengths along the fixed tangents, then each point's
+    // parameter moved to its nearest place on the curve and fitted again (Schneider).
+    let c1 = p0, c2 = p3;
+    for (let round = 0; round < 6; round++) {
+      let c00 = 0, c01 = 0, c11 = 0, x0 = 0, x1 = 0;
+      pts.forEach((p, k) => {
+        const t = u[k], m = 1 - t, b1 = 3 * m * m * t, b2 = 3 * m * t * t;
+        const a1 = { x: t1.x * b1, y: t1.y * b1 }, a2 = { x: -t2.x * b2, y: -t2.y * b2 };
+        const base = at(p0, p3, t);
+        c00 += a1.x * a1.x + a1.y * a1.y; c01 += a1.x * a2.x + a1.y * a2.y; c11 += a2.x * a2.x + a2.y * a2.y;
+        x0 += a1.x * (p.x - base.x) + a1.y * (p.y - base.y); x1 += a2.x * (p.x - base.x) + a2.y * (p.y - base.y);
+      });
+      const det = c00 * c11 - c01 * c01;
+      if (Math.abs(det) < 1e-12) return null;
+      const l1 = (x0 * c11 - x1 * c01) / det, l2 = (c00 * x1 - c01 * x0) / det;
+      if (!(l1 > 1e-6 && l2 > 1e-6) || l1 > 2 * total || l2 > 2 * total) return null;
+      c1 = { x: p0.x + t1.x * l1, y: p0.y + t1.y * l1 }; c2 = { x: p3.x - t2.x * l2, y: p3.y - t2.y * l2 };
+      for (let k = 1; k < u.length - 1; k++) {
+        const t = u[k], m = 1 - t, q = at(c1, c2, t), p = pts[k];
+        const d1 = { x: 3 * (m * m * (c1.x - p0.x) + 2 * m * t * (c2.x - c1.x) + t * t * (p3.x - c2.x)), y: 3 * (m * m * (c1.y - p0.y) + 2 * m * t * (c2.y - c1.y) + t * t * (p3.y - c2.y)) };
+        const d2 = { x: 6 * (m * (c2.x - 2 * c1.x + p0.x) + t * (p3.x - 2 * c2.x + c1.x)), y: 6 * (m * (c2.y - 2 * c1.y + p0.y) + t * (p3.y - 2 * c2.y + c1.y)) };
+        const num = (q.x - p.x) * d1.x + (q.y - p.y) * d1.y, den = d1.x * d1.x + d1.y * d1.y + (q.x - p.x) * d2.x + (q.y - p.y) * d2.y;
+        if (Math.abs(den) > 1e-12) u[k] = Math.max(0, Math.min(1, t - num / den));
+      }
+    }
+    // Every original point must lie within tolerance of the new curve.
+    const samples = Array.from({ length: 65 }, (_, k) => at(c1, c2, k / 64));
+    const far = (p: Point) => { let best = Infinity; for (let k = 0; k < 64; k++) { const a = samples[k], b = samples[k + 1], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy, t = l2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0; best = Math.min(best, Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)); } return best > limit; };
+    if (pts.some(far)) return null;
+    // And the new curve must stay within tolerance of the original points.
+    const ring = (q: Point) => { let best = Infinity; for (let k = 0; k + 1 < pts.length; k++) { const a = pts[k], b = pts[k + 1], dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy, t = l2 ? Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / l2)) : 0; best = Math.min(best, Math.hypot(q.x - a.x - t * dx, q.y - a.y - t * dy)); } return best > limit; };
+    if (samples.some(ring)) return null;
+    return { type: 'C', c1, c2, to: p3 };
+  };
+  const segs: Seg[] = [];
+  for (let i = 0; i < n;) {
+    let j = i;
+    while (j + 1 < n && line(i, j + 1)) j++;
+    if (j > i || (curve.segs[i].type !== 'L' && line(i, i))) { segs.push({ type: 'L', to: ends[j + 1] }); i = j + 1; continue; }
+    let k = i, best: Seg | null = null;
+    for (let c = k + 1 < n ? cubic(i, k + 1) : null; c; c = k + 1 < n ? cubic(i, k + 1) : null) { best = c; k++; }
+    if (best && k > i) { segs.push(best); i = k + 1; } else { segs.push(curve.segs[i]); i++; }
+  }
+  return { start: curve.start, segs };
 }

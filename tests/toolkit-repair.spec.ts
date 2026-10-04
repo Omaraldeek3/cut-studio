@@ -60,3 +60,13 @@ test('engraved lines are never touched', () => {
   const d: Drawing = { width: 20, height: 20, shapes: [{ id: 'a', name: 'a', contours: [{ ...rect(0, 0, 10, 10), layer: 'engrave' }, { ...rect(0, 0, 10, 10), layer: 'engrave' }] }] };
   expect(repairDrawing(d, { overlaps: true, join: 0.1, minArea: 1, reduce: true }).drawing.shapes[0].contours).toHaveLength(2);
 });
+
+test('reducing nodes turns a dense nearly straight edge into one line', () => {
+  // 200 points along the top edge of a 100 × 20 rectangle, every other one off by 0.05 mm.
+  const top = Array.from({ length: 200 }, (_, i) => ({ x: i / 2, y: i % 2 ? 0.05 : 0 }));
+  const d = drawing([{ closed: true, points: [...top, { x: 100, y: 0 }, { x: 100, y: 20 }, { x: 0, y: 20 }] }]);
+  const r = repairDrawing(d, { ...off, reduce: true, simplify: 0.1 });
+  expect(r.nodesBefore).toBe(203);
+  expect(r.nodesAfter).toBe(4);
+  expect(repairDrawing(d, { ...off, reduce: true, simplify: 0.01 }).nodesAfter).toBeGreaterThan(100);
+});

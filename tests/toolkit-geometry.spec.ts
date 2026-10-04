@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { bounds, shapesCollide, nest, repeatDrawing, kerfDrawing, cleanDrawing, contourKey, partsForNesting } from '../src/toolkit/geometry';
+import { bounds, shapesCollide, nest, repeatDrawing, kerfDrawing, cleanDrawing, contourKey, partsForNesting, snugAngle, normalize } from '../src/toolkit/geometry';
 import { toSvg, toDxf } from '../src/toolkit/export';
 import type { Shape } from '../src/toolkit/types';
 import { sampleDrawing } from '../src/toolkit/samples';
@@ -148,4 +148,29 @@ test('a big job of hundreds of parts packs quickly, without overlaps, inside the
     }
   }
   expect({ outside, touching }).toEqual({ outside: 0, touching: 0 });
+});
+
+// A 40 × 10 bar drawn turned by `deg` degrees around (cx, cy).
+const bar = (id: string, cx: number, cy: number, deg: number): Shape => {
+  const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+  return { id, name: id, contours: [{ closed: true, points: [[-20, -5], [20, -5], [20, 5], [-20, 5]].map(([x, y]) => ({ x: cx + x * c - y * s, y: cy + x * s + y * c })) }] };
+};
+
+test('a part drawn at an angle finds the turn that gives its smallest bounding rectangle', () => {
+  for (const deg of [0, 17, 30, 45, 80]) {
+    const shape = bar('b', 50, 50, deg), b = bounds(normalize(shape, snugAngle(shape)));
+    expect(b.width * b.height).toBeCloseTo(400, 3);
+  }
+  expect(snugAngle(rect('r', 0, 0, 30, 20))).toBe(0);
+});
+
+test('turning pieces to any angle packs tilted parts on fewer sheets, small jobs and big', () => {
+  for (const count of [40, 300]) {
+    const shapes = Array.from({ length: count }, (_, i) => bar(`b${i}`, 30 + (i % 10) * 60, 30 + Math.floor(i / 10) * 60, 20 + (i * 13) % 50));
+    const o = { width: 200, height: 150, margin: 2, gap: 2, copies: 1, rotate: true };
+    const square = nest(shapes, o), turned = nest(shapes, { ...o, anyAngle: true });
+    expect(turned.unplaced).toEqual([]);
+    expect(turned.sheets.length).toBeLessThan(square.sheets.length);
+    for (const sheet of turned.sheets) for (const part of sheet) { const b = bounds(part); expect(b.x).toBeGreaterThanOrEqual(2); expect(b.x + b.width).toBeLessThanOrEqual(198 + 1e-6); }
+  }
 });

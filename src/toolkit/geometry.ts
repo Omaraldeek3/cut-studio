@@ -216,56 +216,100 @@ function outlinesCollide(a:Outline,dx:number,dy:number,b:Outline,gap:number){
 }
 const empty:Outline={rings:[],box:{x:Infinity,y:Infinity,width:0,height:0}};
 type Placement={kind:number;angle:number;x:number;y:number;id:string;name:string;outline:Outline;box:Bounds};
+/** The turn, in degrees from 0 to 90, that gives the shape its smallest
+ *  bounding rectangle: one of its convex hull's edges lies along an axis. */
+export function snugAngle(shape:Shape):number{
+  const hull=convexHull(shape.contours.filter(c=>c.layer!=='engrave').flatMap(c=>c.points));
+  let best=0,bestArea=Infinity;
+  for(let i=0;i<hull.length;i++){
+    const a=hull[i],b=hull[(i+1)%hull.length],t=Math.atan2(b.y-a.y,b.x-a.x),cos=Math.cos(-t),sin=Math.sin(-t);
+    let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+    for(const p of hull){const x=p.x*cos-p.y*sin,y=p.x*sin+p.y*cos;x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y);}
+    const area=(x1-x0)*(y1-y0);
+    if(area<bestArea-1e-9){bestArea=area;best=((-t*180/Math.PI)%90+90)%90;}
+  }
+  // Keep the shape as drawn unless turning it saves more than 1%.
+  const b0=bounds(shape);
+  return bestArea<b0.width*b0.height*0.99?best:0;
+}
 type Rect={x:number;y:number;w:number;h:number};
-/** Packs each piece's bounding rectangle (turned 90° when rotation is allowed)
- *  with MaxRects, best short side fit, biggest pieces first. Every rectangle is
+type Fit=(r:Rect,w:number,h:number)=>[number,number];
+/** MaxRects placement rules: each scores a free rectangle for a piece, lowest wins. */
+const FITS:Fit[]=[
+  (r,w,h)=>[Math.min(r.w-w,r.h-h),Math.max(r.w-w,r.h-h)], // best short side
+  (r,w,h)=>[r.w*r.h-w*h,Math.min(r.w-w,r.h-h)], // best area
+  (r,w,h)=>[r.y+h,r.x], // bottom left
+  (r,w,h)=>[Math.max(r.w-w,r.h-h),Math.min(r.w-w,r.h-h)], // best long side
+];
+/** Packs each piece's bounding rectangle with MaxRects. Every rectangle is
  *  grown by the spacing, and the usable sheet by the same, so neighbours keep
- *  the spacing and the edge keeps the margin. */
+ *  the spacing and the edge keeps the margin. Pieces turn 90° when rotation is
+ *  allowed, and first to their snuggest angle when any angle is. Several
+ *  placement rules and piece orders are tried, as time allows, and the layout
+ *  with the fewest sheets and the smallest used area on the last one is kept. */
 function packByBounds(shapes:Shape[],counts:number[],o:NestOptions,start:number):NestResult{
   shapes.forEach(outerRings);
   const margin=o.margin+TOLERANCE,gap=o.gap+2*TOLERANCE+0.001,W=o.width-2*margin+gap,H=o.height-2*margin+gap;
   const kinds=shapes.map(shape=>{
-    const b=bounds(shape),sizes=[{angle:0,w:b.width+gap,h:b.height+gap}];
-    if(o.rotate&&Math.abs(b.width-b.height)>1e-9)sizes.push({angle:90,w:b.height+gap,h:b.width+gap});
+    const turn=o.rotate&&o.anyAngle?snugAngle(shape):0,b=bounds(turn?rotateShape(shape,turn):shape);
+    const sizes=[{angle:turn,w:b.width+gap,h:b.height+gap}];
+    if(o.rotate&&Math.abs(b.width-b.height)>1e-9)sizes.push({angle:turn+90,w:b.height+gap,h:b.width+gap});
     return {shape,area:shapeArea(shape),sizes:sizes.filter(z=>z.w<=W+1e-9&&z.h<=H+1e-9)};
   });
   const instances=shapes.flatMap((s,kind)=>Array.from({length:counts[kind]},(_,i)=>({kind,id:`${s.id}-${i}`,name:s.name})));
-  const side=(kind:number)=>{const z=kinds[kind].sizes[0];return z?Math.max(z.w,z.h):0;};
-  instances.sort((a,b)=>side(b.kind)-side(a.kind)||kinds[b.kind].area-kinds[a.kind].area);
-  const sheets:{free:Rect[];placed:{kind:number;angle:number;x:number;y:number;id:string;name:string}[]}[]=[],unplaced:string[]=[];let area=0;
+  const first=(kind:number)=>kinds[kind].sizes[0]??{w:0,h:0};
+  const orders:((a:(typeof instances)[number],b:(typeof instances)[number])=>number)[]=[
+    (a,b)=>Math.max(first(b.kind).w,first(b.kind).h)-Math.max(first(a.kind).w,first(a.kind).h)||kinds[b.kind].area-kinds[a.kind].area,
+    (a,b)=>first(b.kind).w*first(b.kind).h-first(a.kind).w*first(a.kind).h,
+    (a,b)=>Math.min(first(b.kind).w,first(b.kind).h)-Math.min(first(a.kind).w,first(a.kind).h)||kinds[b.kind].area-kinds[a.kind].area,
+  ];
   const within=(a:Rect,b:Rect)=>a.x>=b.x-1e-9&&a.y>=b.y-1e-9&&a.x+a.w<=b.x+b.w+1e-9&&a.y+a.h<=b.y+b.h+1e-9;
-  for(const item of instances){
-    const sizes=kinds[item.kind].sizes;
-    if(!sizes.length){unplaced.push(item.name);continue;}
-    let done=false;
-    for(let k=0;k<=sheets.length&&!done;k++){
-      if(k===sheets.length)sheets.push({free:[{x:0,y:0,w:W,h:H}],placed:[]});
-      const sheet=sheets[k];
-      let best:{r:Rect;z:(typeof sizes)[number]}|null=null,bestShort=Infinity,bestLong=Infinity;
-      for(const r of sheet.free)for(const z of sizes){
-        if(z.w>r.w+1e-9||z.h>r.h+1e-9)continue;
-        const short=Math.min(r.w-z.w,r.h-z.h),long=Math.max(r.w-z.w,r.h-z.h);
-        if(short<bestShort||(short===bestShort&&long<bestLong)){best={r,z};bestShort=short;bestLong=long;}
+  type Placed={kind:number;angle:number;x:number;y:number;w:number;h:number;id:string;name:string};
+  function pack(order:typeof instances,fit:Fit){
+    const sheets:{free:Rect[];placed:Placed[]}[]=[],unplaced:string[]=[];let area=0;
+    for(const item of order){
+      const sizes=kinds[item.kind].sizes;
+      if(!sizes.length){unplaced.push(item.name);continue;}
+      let done=false;
+      for(let k=0;k<=sheets.length&&!done;k++){
+        if(k===sheets.length)sheets.push({free:[{x:0,y:0,w:W,h:H}],placed:[]});
+        const sheet=sheets[k];
+        let best:{r:Rect;z:(typeof sizes)[number]}|null=null,s1=Infinity,s2=Infinity;
+        for(const r of sheet.free)for(const z of sizes){
+          if(z.w>r.w+1e-9||z.h>r.h+1e-9)continue;
+          const [a,b]=fit(r,z.w,z.h);
+          if(a<s1||(a===s1&&b<s2)){best={r,z};s1=a;s2=b;}
+        }
+        if(!best)continue;
+        const used={x:best.r.x,y:best.r.y,w:best.z.w,h:best.z.h};
+        // Split every free rectangle the new piece overlaps into the parts around it.
+        const next:Rect[]=[];
+        for(const f of sheet.free){
+          if(used.x>=f.x+f.w||used.x+used.w<=f.x||used.y>=f.y+f.h||used.y+used.h<=f.y){next.push(f);continue;}
+          if(used.x>f.x)next.push({x:f.x,y:f.y,w:used.x-f.x,h:f.h});
+          if(used.x+used.w<f.x+f.w)next.push({x:used.x+used.w,y:f.y,w:f.x+f.w-used.x-used.w,h:f.h});
+          if(used.y>f.y)next.push({x:f.x,y:f.y,w:f.w,h:used.y-f.y});
+          if(used.y+used.h<f.y+f.h)next.push({x:f.x,y:used.y+used.h,w:f.w,h:f.y+f.h-used.y-used.h});
+        }
+        sheet.free=next.filter((a,i)=>a.w>1e-6&&a.h>1e-6&&!next.some((b,j)=>j!==i&&within(a,b)&&(!within(b,a)||j<i)));
+        sheet.placed.push({kind:item.kind,angle:best.z.angle,x:used.x,y:used.y,w:used.w,h:used.h,id:item.id,name:item.name});
+        area+=kinds[item.kind].area;done=true;
       }
-      if(!best)continue;
-      const used={x:best.r.x,y:best.r.y,w:best.z.w,h:best.z.h};
-      // Split every free rectangle the new piece overlaps into the parts around it.
-      const next:Rect[]=[];
-      for(const f of sheet.free){
-        if(used.x>=f.x+f.w||used.x+used.w<=f.x||used.y>=f.y+f.h||used.y+used.h<=f.y){next.push(f);continue;}
-        if(used.x>f.x)next.push({x:f.x,y:f.y,w:used.x-f.x,h:f.h});
-        if(used.x+used.w<f.x+f.w)next.push({x:used.x+used.w,y:f.y,w:f.x+f.w-used.x-used.w,h:f.h});
-        if(used.y>f.y)next.push({x:f.x,y:f.y,w:f.w,h:used.y-f.y});
-        if(used.y+used.h<f.y+f.h)next.push({x:f.x,y:used.y+used.h,w:f.w,h:f.y+f.h-used.y-used.h});
-      }
-      sheet.free=next.filter((a,i)=>a.w>1e-6&&a.h>1e-6&&!next.some((b,j)=>j!==i&&within(a,b)&&(!within(b,a)||j<i)));
-      sheet.placed.push({kind:item.kind,angle:best.z.angle,x:margin+used.x,y:margin+used.y,id:item.id,name:item.name});
-      area+=kinds[item.kind].area;done=true;
+      if(!done)unplaced.push(item.name);
     }
-    if(!done)unplaced.push(item.name);
+    const used=sheets.filter(s=>s.placed.length),last=used[used.length-1]?.placed??[];
+    // Fewer sheets first, then the smallest corner of the last sheet in use.
+    const score=unplaced.length*1e15+used.length*1e9+Math.max(0,...last.map(p=>p.x+p.w))*Math.max(0,...last.map(p=>p.y+p.h));
+    return {sheets:used,unplaced,area,score};
   }
-  const out=sheets.filter(s=>s.placed.length).map(s=>s.placed.map(p=>({...moveShape(normalize(kinds[p.kind].shape,p.angle),p.x,p.y),id:p.id,name:p.name})));
-  return {sheets:out,unplaced,total:instances.length,area,elapsed:Date.now()-start,outlineTolerance:0,byBounds:true};
+  let chosen:ReturnType<typeof pack>|null=null;
+  for(const order of orders)for(const fit of FITS){
+    if(chosen&&Date.now()-start>6000)break;
+    const r=pack([...instances].sort(order),fit);
+    if(!chosen||r.score<chosen.score)chosen=r;
+  }
+  const out=chosen!.sheets.map(s=>s.placed.map(p=>({...moveShape(normalize(kinds[p.kind].shape,p.angle),margin+p.x,margin+p.y),id:p.id,name:p.name})));
+  return {sheets:out,unplaced:chosen!.unplaced,total:instances.length,area:chosen!.area,elapsed:Date.now()-start,outlineTolerance:0,byBounds:true};
 }
 export function nest(allShapes:Shape[],o:NestOptions):NestResult {
   const start=Date.now(); finite(o.width,1,3000,'Sheet width');finite(o.height,1,3000,'Sheet height');finite(o.margin,0,100,'Margin');finite(o.gap,0,100,'Spacing');
@@ -289,8 +333,8 @@ export function nest(allShapes:Shape[],o:NestOptions):NestResult {
   }
   if(tolerance<0)throw new Error('This nesting job is too detailed even with 2 mm outline simplification. Nest fewer parts at once.');
   const margin=o.margin+TOLERANCE,gap=o.gap+2*TOLERANCE+2*tolerance+0.001;
-  const angles=o.rotate?[0,90,180,270]:[0];
   const kinds=shapes.map((shape,index)=>{
+    const turn=o.rotate&&o.anyAngle?snugAngle(shape):0,angles=o.rotate?[turn,turn+90,turn+180,turn+270]:[0];
     const outline:Shape={id:shape.id,name:shape.name,contours:outlines[index].map(points=>({closed:true,points}))};
     const variants=angles.map(angle=>{
       // Anchor the outline to the exact rotated part bounds so a placement

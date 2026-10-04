@@ -79,3 +79,12 @@ test('a layer of 400 pieces in one path arranges in the browser',async({page})=>
  await expect(page.locator('.stats-row')).toContainText('400 / 400');
  await expect(page.locator('.tip-card').last()).toContainText('bounding rectangle');
 });
+test('any-angle turning is offered with rotation and packs the job',async({page})=>{
+ const d=Array.from({length:30},(_,i)=>{const a=(20+i*7)*Math.PI/180,c=Math.cos(a),s=Math.sin(a),cx=30+(i%6)*60,cy=30+Math.floor(i/6)*60;return 'M'+[[-20,-5],[20,-5],[20,5],[-20,5]].map(([x,y])=>`${(cx+x*c-y*s).toFixed(3)} ${(cy+x*s+y*c).toFixed(3)}`).join('L')+'Z';}).join('');
+ await page.goto('/en/nesting');await page.getByLabel('Import vector file').setInputFiles({name:'bars.svg',mimeType:'image/svg+xml',buffer:Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="400mm" height="400mm" viewBox="0 0 400 400"><path d="${d}"/></svg>`)});
+ await expect(page.getByText('Any angle',{exact:true})).toBeVisible();
+ await page.getByText('Any angle',{exact:true}).click();
+ await page.getByRole('button',{name:'Arrange parts',exact:true}).click();await expect(page.getByText('Layout ready',{exact:true})).toBeVisible({timeout:20000});
+ await expect(page.locator('.stats-row')).toContainText('30 / 30');
+ await page.getByText('Allow 90° rotations',{exact:true}).click();await expect(page.getByText('Any angle',{exact:true})).toHaveCount(0);
+});

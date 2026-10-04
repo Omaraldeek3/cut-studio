@@ -287,6 +287,16 @@ html[dir=rtl] .preview-top > span { letter-spacing: 0; }
 .stat.long strong { font-size: clamp(11px, calc(160cqi / var(--chars)), 22px); }
 .stat small { margin-inline-start: 4px; font-size: 12.5px; font-weight: 550; color: var(--ink-3); }
 
+/* File check in Vector cleanup: one row per kind of problem, with a way to see it. */
+.file-check { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-inline-start: 3px solid #d43c2c; border-radius: var(--r2); background: var(--surface); }
+.file-check h3 { margin: 0 0 6px; font-size: 14px; font-weight: 700; }
+.file-check ul { margin: 0; padding: 0; list-style: none; }
+.file-check li { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.file-check li:first-child { border-top: 0; }
+.file-check strong { font-size: 13.5px; font-weight: 650; }
+.file-check .count { display: inline-block; min-width: 22px; margin-inline-start: 6px; padding: 0 6px; border-radius: 999px; background: #d43c2c; color: #fff; font-size: 12px; text-align: center; }
+.file-check .micro { margin: 2px 0 0; }
+.file-check button { flex-shrink: 0; }
 .tip-card { display: flex; gap: 12px; align-items: flex-start; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r2); background: var(--surface); color: var(--ink-2); }
 .tip-card p { margin: 0; font-size: 13.5px; line-height: 1.65; }
 .tip-mark { display: grid; place-items: center; flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-strong); font: italic 700 12px Georgia, serif; }

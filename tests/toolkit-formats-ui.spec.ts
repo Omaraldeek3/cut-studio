@@ -27,7 +27,7 @@ test('cleanup warns about open paths instead of calling the file ready',async({p
  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100"><path d="M10 10 L50 10 L50 50"/></svg>';
  await page.goto('/en/vector-cleanup');await page.getByLabel('Import vector file').setInputFiles({name:'open.svg',mimeType:'image/svg+xml',buffer:Buffer.from(svg)});
  await page.getByRole('button',{name:'Apply cleanup',exact:true}).click();
- await expect(page.getByRole('status')).toContainText('1 open paths remain');
+ await expect(page.locator('.file-check')).toContainText('Open paths 1');await expect(page.locator('.tip-card.ready')).toHaveCount(0);
 });
 test('cleanup preview shows the nodes, before and after, and zooms in to them',async({page})=>{
  // A nearly straight edge of twenty cubics, then three corners.
@@ -94,4 +94,14 @@ test('occasional makers and calculators sit together under More tools',async({pa
  await page.goto('/en/vector-cleanup');
  const section=page.locator('nav, aside').filter({hasText:'More tools'}).first();
  for(const name of ['Gear maker','Jigsaw puzzle','Ruler maker']) await expect(section.getByRole('link',{name,exact:true})).toBeVisible();
+});
+test('the file check lists problems and zooms to each one',async({page})=>{
+ const svg='<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100"><rect x="10" y="10" width="20" height="20" stroke="red" fill="none"/><rect x="20" y="20" width="20" height="20" stroke="red" fill="none"/><path d="M70 70 L80 70" stroke="red"/></svg>';
+ await page.goto('/en/vector-cleanup');await page.getByLabel('Import vector file').setInputFiles({name:'bad.svg',mimeType:'image/svg+xml',buffer:Buffer.from(svg)});
+ const check=page.locator('.file-check');
+ await expect(check).toContainText('Cut lines crossing 2');await expect(check).toContainText('Open paths 1');
+ await expect(page.locator('.issue-marks circle')).toHaveCount(3);
+ await check.locator('li').filter({hasText:'Open paths'}).getByRole('button',{name:'Show me'}).click();
+ // An eighth of the 100 mm artboard, centred on the open path's start at (70, 70).
+ await expect(page.locator('.vector-paper')).toHaveAttribute('viewBox','63.75 63.75 12.5 12.5');
 });

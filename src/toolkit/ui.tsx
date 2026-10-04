@@ -22,14 +22,17 @@ export function Stat({label,value,unit}:{label:string;value:React.ReactNode;unit
 type View={x:number;y:number;w:number;h:number};
 /** Where a contour's nodes are: the ends of its exact segments, or its points. */
 function nodesOf(d:Drawing){const out:{x:number;y:number}[]=[];for(const s of d.shapes)for(const c of s.contours){if(c.pen)continue;if(c.curve){if(!c.closed||!c.curve.segs.length)out.push(c.curve.start);for(const g of c.curve.segs)out.push(g.to);}else out.push(...c.points);}return out;}
-export function VectorPreview({drawing,lang,filled=false,caption,labels,nodes=false}:{drawing:Drawing|null;lang:Language;filled?:boolean;caption?:string;labels?:{x:number;y:number;value:string}[];nodes?:boolean}){
+/** `issues` ring places on the drawing (problems a check found); a new `focus` zooms to one. */
+export function VectorPreview({drawing,lang,filled=false,caption,labels,nodes=false,issues,focus}:{drawing:Drawing|null;lang:Language;filled?:boolean;caption?:string;labels?:{x:number;y:number;value:string}[];nodes?:boolean;issues?:{x:number;y:number}[];focus?:{x:number;y:number;key:number}}){
  const colors=['#d78155','#a5ba9a','#e1bb5d','#8fa6bc','#c7aac0','#e0a58b'];
  const W=drawing?.width??1,H=drawing?.height??1;
  // Zoom and pan, kept per artboard size; the view keeps the artboard's proportions.
- const [zoom,setZoom]=useState<{w:number;h:number;view:View}|null>(null);
+ const [zoom,setZoom]=useState<{w:number;h:number;view:View}|null>(null),[focused,setFocused]=useState(-1);
  const v=zoom&&zoom.w===W&&zoom.h===H?zoom.view:{x:0,y:0,w:W,h:H};
  const svg=useRef<SVGSVGElement>(null),drag=useRef<{x:number;y:number;view:View}|null>(null);
  const fit=(view:View):View=>{const w=Math.min(W,Math.max(W/400,view.w)),h=w*H/W;return {w,h,x:Math.min(W-w,Math.max(0,view.x)),y:Math.min(H-h,Math.max(0,view.y))};};
+ // Zoom to a newly asked-for place: an eighth of the artboard wide, centred on it.
+ if(focus&&focus.key!==focused&&drawing){setFocused(focus.key);const w=W/8,h=w*H/W;setZoom({w:W,h:H,view:fit({x:focus.x-w/2,y:focus.y-h/2,w,h})});}
  const zoomAt=(factor:number,fx=0.5,fy=0.5)=>setZoom(z=>{const c=z&&z.w===W&&z.h===H?z.view:{x:0,y:0,w:W,h:H},w=c.w*factor,h=w*H/W;return {w:W,h:H,view:fit({x:c.x+(c.w-w)*fx,y:c.y+(c.h-h)*fy,w,h})};});
  useEffect(()=>{const el=svg.current;if(!el)return;
   // The wheel zooms once nodes are shown or the view is zoomed; otherwise it scrolls the page.
@@ -54,6 +57,7 @@ export function VectorPreview({drawing,lang,filled=false,caption,labels,nodes=fa
   {drawing.shapes.filter(s=>s.contours.some(c=>c.layer==='engrave'&&!c.pen)).map(s=><path key={`${s.id}-engrave`} d={pathData({...s,contours:s.contours.filter(c=>!c.pen)},'engrave')} fill="none" stroke="#2f5db8" strokeWidth={0.8} vectorEffect="non-scaling-stroke"/>)}
   {drawing.shapes.flatMap(s=>s.contours.flatMap((c,j)=>c.pen?[<path key={`${s.id}-pen-${j}`} d={pathData({...s,contours:[c]},c.layer==='engrave'?'engrave':'cut')} fill={c.closed?c.pen.rgb:'none'} fillOpacity={0.85} stroke="#334038" strokeWidth={0.4} vectorEffect="non-scaling-stroke"/>]:[]))}
   {labels?.map((l,i)=><text key={i} x={l.x} y={l.y+4} fontSize="4" fill="#476481" fontFamily="monospace">{l.value}</text>)}
+  {issues?.length?<g className="issue-marks" fill="none" stroke="#d43c2c" strokeWidth={2} vectorEffect="non-scaling-stroke">{issues.map((m,i)=><circle key={i} cx={m.x} cy={m.y} r={v.w*9/px} vectorEffect="non-scaling-stroke"/>)}</g>:null}
   {shown&&<path className="node-marks" d={shown} fill="#fff" stroke="#1d7fd6" strokeWidth={1} vectorEffect="non-scaling-stroke"/>}
  </svg>:<div className="empty-preview"><Icon name="trace" size={42}/><p>{tx(lang,'Your preview will appear here','ستظهر المعاينة هنا')}</p></div>}</div><div className="preview-bottom"><span><i/>{nodes&&drawing?(shown===null?tx(lang,`${marks.length} nodes · zoom in (+ or scroll) to see them`,`${marks.length} نقطة · كبّر (+ أو عجلة الفأرة) لرؤيتها`):tx(lang,`${marks.length} nodes · scroll to zoom, drag to move`,`${marks.length} نقطة · كبّر بعجلة الفأرة واسحب للتحريك`)):caption||tx(lang,'Physical dimensions · millimetres','أبعاد فعلية · ملليمتر')}</span><span dir="ltr">1:1 EXPORT</span></div></div>;
 }

@@ -83,7 +83,7 @@ test('box maker builds every box type, dividers, labels and a 3D view, then nest
   await page.goto('/en/nesting');await page.getByRole('link',{name:'Box maker',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Box maker'})).toBeVisible();
   await page.getByLabel('Dimensions are').selectOption('inside');await page.getByLabel(/^Width/).fill('100');await page.getByLabel('Material thickness').fill('4');
-  await expect(page.getByText('108 × 88 × 68',{exact:true})).toBeVisible();
+  await expect(page.getByText('108 × 88 × 68 mm',{exact:true})).toBeVisible();
   const exportSvg=async()=>{const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Export SVG',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),svg:await readFile((await file.path())!,'utf8')};};
   const closed=await exportSvg();expect(closed.name).toBe('closed-box-108x88x68-4mm.svg');
   expect(closed.svg.match(/stroke="#ff0000"/g)?.length).toBe(6);expect(closed.svg.match(/stroke="#0000ff"/g)?.length).toBe(6);

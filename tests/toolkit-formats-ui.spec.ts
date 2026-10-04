@@ -62,3 +62,11 @@ test('import errors read in Arabic on the Arabic site',async({page})=>{
  await page.getByLabel('استيراد ملف فيكتور').setInputFiles({name:'bad.svg',mimeType:'image/svg+xml',buffer:Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10"><path d="M0 0 Q1"/></svg>')});
  await expect(page.locator('.error-note')).toHaveText('أمر مسار SVG غير صالح أو ناقص.');
 });
+test('long figures in stat tiles shrink to fit instead of being cut off, on a phone',async({page})=>{
+ await page.setViewportSize({width:375,height:812});
+ for(const url of ['/ar/box-maker','/en/box-maker']){
+  await page.goto(url);await expect(page.locator('.stat strong').first()).toContainText('×');
+  const cut=await page.locator('.stat strong').evaluateAll(els=>els.filter(e=>e.scrollWidth>e.clientWidth).map(e=>e.textContent));
+  expect(cut).toEqual([]);
+ }
+});

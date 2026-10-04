@@ -280,9 +280,11 @@ html[dir=rtl] .preview-top > span { letter-spacing: 0; }
 .empty-preview p { margin: 10px 0 0; font-size: 14px; }
 
 .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 14px; }
-.stat { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r2); background: var(--surface); min-width: 0; }
+.stat { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r2); background: var(--surface); min-width: 0; container-type: inline-size; }
 .stat > span { display: block; font-size: 12.5px; color: var(--ink-3); }
 .stat strong { display: block; font-size: 22px; font-weight: 750; line-height: 1.35; letter-spacing: -.3px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A long figure ("4396 → 2696", "120 × 80 × 60 mm") shrinks to fit its tile: digits are about 0.6 em wide. */
+.stat.long strong { font-size: clamp(11px, calc(160cqi / var(--chars)), 22px); }
 .stat small { margin-inline-start: 4px; font-size: 12.5px; font-weight: 550; color: var(--ink-3); }
 
 .tip-card { display: flex; gap: 12px; align-items: flex-start; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r2); background: var(--surface); color: var(--ink-2); }

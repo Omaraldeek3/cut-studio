@@ -83,10 +83,10 @@ export function BoxWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
     </div><span className="micro">{tx(lang, 'Red cuts · blue engraves', 'الأحمر للقص · الأزرق للحفر')}</span></div>
     {view === 'flat' || !result ? <VectorPreview drawing={drawing} lang={lang} filled caption={tx(lang, `${result?.parts.length ?? 0} parts laid out for cutting`, `${result?.parts.length ?? 0} قطعة جاهزة للقص`)}/> : <div className="preview-surface box-3d-surface"><Box3D parts={result.parts} outside={result.outside} thickness={result.thickness} lang={lang}/></div>}
     <div className="stats-row">
-      <Stat label={tx(lang, 'Outside size', 'المقاس الخارجي')} value={<span dir="ltr">{result ? size(result.outside) : '—'}</span>} unit=" mm"/>
-      <Stat label={tx(lang, 'Usable inside', 'المساحة الداخلية')} value={<span dir="ltr">{result ? size(result.inside) : '—'}</span>} unit=" mm"/>
+      <Stat label={tx(lang, 'Outside size', 'المقاس الخارجي')} value={result ? size(result.outside) : '—'} unit=" mm"/>
+      <Stat label={tx(lang, 'Usable inside', 'المساحة الداخلية')} value={result ? size(result.inside) : '—'} unit=" mm"/>
       <Stat label={tx(lang, 'Parts', 'القطع')} value={result ? result.parts.length : '—'}/>
-      <Stat label={tx(lang, 'Layout size', 'مساحة الترتيب')} value={<span dir="ltr">{drawing ? `${Math.ceil(drawing.width)} × ${Math.ceil(drawing.height)}` : '—'}</span>} unit=" mm"/>
+      <Stat label={tx(lang, 'Layout size', 'مساحة الترتيب')} value={drawing ? `${Math.ceil(drawing.width)} × ${Math.ceil(drawing.height)}` : '—'} unit=" mm"/>
     </div>
     {result && result.unlabelled.length > 0 && <p className="micro">{tx(lang, `No room for a label on: ${result.unlabelled.join(', ')}.`, `لا توجد مساحة لاسم القطعة على: ${result.unlabelled.map(n => partName(n, lang)).join('، ')}.`)}</p>}
     {result && <table className="parts-list"><caption>{tx(lang, 'Parts list', 'قائمة القطع')}</caption><thead><tr><th>{tx(lang, 'Part', 'القطعة')}</th><th>{tx(lang, 'Size (mm)', 'المقاس (مم)')}</th><th>{tx(lang, 'Holes', 'الفتحات')}</th></tr></thead><tbody>

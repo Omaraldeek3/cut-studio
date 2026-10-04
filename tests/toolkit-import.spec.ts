@@ -237,3 +237,11 @@ test('Bezier paths keep their exact curves, so cleanup and export do not multipl
   const svgOut = toSvg(drawing);
   expect(svgOut).toContain('C0 20 20 20 20 0');
 });
+test('blue lines import as engraving, from attributes, styles, stylesheets and groups', async ({ page }) => {
+  const drawing = await parse(page, svg('<style>.mark{stroke:#0000ff}</style><rect width="40" height="40" stroke="red"/><circle cx="20" cy="20" r="5" stroke="blue" fill="none"/><path class="mark" d="M5 5L10 5"/><g style="stroke:rgb(20,40,220)"><path d="M5 30L30 30"/></g><path d="M50 5L60 5" stroke="#000"/><path d="M50 20L60 20" stroke="none" fill="#00f"/>'));
+  expect(drawing.shapes.map(s => s.contours[0].layer ?? 'cut')).toEqual(['cut', 'engrave', 'engrave', 'engrave', 'cut', 'engrave']);
+});
+test('engraving written by Cut Studio comes back as engraving', async ({ page }) => {
+  const drawing = await parse(page, toSvg({ width: 50, height: 50, shapes: [{ id: 'a', name: 'a', contours: [{ closed: true, points: [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 40 }] }, { closed: false, layer: 'engrave', points: [{ x: 5, y: 5 }, { x: 20, y: 5 }] }] }] }));
+  expect(drawing.shapes.flatMap(s => s.contours.map(c => c.layer ?? 'cut'))).toEqual(['cut', 'engrave']);
+});

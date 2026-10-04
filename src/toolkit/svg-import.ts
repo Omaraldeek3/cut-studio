@@ -29,6 +29,20 @@ function checkDeclarations(text: string) {
     if (/url\s*\(/i.test(value) && !((property === 'fill' || property === 'stroke') && LOCAL_PAINT.test(value))) fail(`Unsafe or referenced SVG content: ${property}. Expand references to paths first.`);
   }
 }
+/** Blue lines engrave, every other colour cuts, as in RDWorks and LightBurn
+ *  colour layers and in the files Cut Studio exports. */
+const BLUES: Record<string, [number, number, number]> = { blue: [0, 0, 255], mediumblue: [0, 0, 205], darkblue: [0, 0, 139], navy: [0, 0, 128], royalblue: [65, 105, 225] };
+export function engraveColour(value: string | null | undefined): boolean {
+  const v = (value || '').trim().toLowerCase();
+  let rgb: number[] | undefined = BLUES[v];
+  const hex = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/.exec(v)?.[1];
+  if (hex) rgb = hex.length <= 4 ? [...hex.slice(0, 3)].map(h => parseInt(h + h, 16)) : [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16));
+  const fn = /^rgba?\(([^)]*)\)$/.exec(v)?.[1];
+  if (fn) rgb = fn.split(/[\s,/]+/).filter(Boolean).slice(0, 3).map(n => (n.endsWith('%') ? parseFloat(n) * 2.55 : parseFloat(n)));
+  if (!rgb || rgb.length < 3 || rgb.some(n => !Number.isFinite(n))) return false;
+  const [r, g, b] = rgb;
+  return b >= 128 && r <= 0.6 * b && g <= 0.6 * b;
+}
 /** Accepts only simple class/tag/id rules with harmless properties, plus @font-face blocks for skipped text. */
 function checkStylesheet(source: string) {
   const css = source.replace(/<!\[CDATA\[|\]\]>/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
@@ -262,6 +276,30 @@ export async function parseSvg(source: string, physicalWidthMm?: number): Promis
     for (const c of contours) { const e = exact.get(c); if (e?.curved) c.curve = { start: e.start, segs: e.segs }; }
     return contours.filter(c => c.points.length >= 2);
   }
+  // Stroke and fill as CSS resolves them: inline style, then stylesheet rules
+  // in order, then the attribute, each inherited from the enclosing groups.
+  const rules: { selector: string; decl: Map<string, string> }[] = [];
+  for (const style of Array.from(root.querySelectorAll('style'))) {
+    const css = (style.textContent || '').replace(/<!\[CDATA\[|\]\]>/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    for (const [, selector, body] of css.matchAll(/([^{}]*)\{([^{}]*)\}/g)) if (!selector.trim().startsWith('@')) rules.push({ selector: selector.trim(), decl: declarations(body) });
+  }
+  function declarations(text: string) {
+    const out = new Map<string, string>();
+    for (const entry of text.split(';')) { const i = entry.indexOf(':'); if (i > 0) out.set(entry.slice(0, i).trim().toLowerCase(), entry.slice(i + 1).trim()); }
+    return out;
+  }
+  function paint(el: Element, property: 'stroke' | 'fill'): string | null {
+    for (let e: Element | null = el; e && e.namespaceURI === NS; e = e.parentElement) {
+      let value = e.getAttribute(property);
+      for (const rule of rules) { let hit = false; try { hit = e.matches(rule.selector); } catch { /* unsupported selector */ } if (hit && rule.decl.has(property)) value = rule.decl.get(property)!; }
+      const inline = declarations(e.getAttribute('style') || '').get(property);
+      if (inline !== undefined) value = inline;
+      if (value !== null && value !== 'inherit') return value;
+      if (e === root) break;
+    }
+    return null;
+  }
+  const engraved = (el: Element) => { const stroke = paint(el, 'stroke'); return engraveColour(stroke && stroke !== 'none' ? stroke : paint(el, 'fill')); };
   function visit(el: Element, inherited: DOMMatrix, depth: number) {
     if (depth > 32) fail('SVG groups exceed 32 nesting levels.');
     if (el.namespaceURI !== NS || nonRendering.has(el.localName)) return;
@@ -299,6 +337,7 @@ export async function parseSvg(source: string, physicalWidthMm?: number): Promis
       }
     }
     const contours = pathContours(data, matrix);
+    if (engraved(el)) for (const c of contours) c.layer = 'engrave';
     if (contours.length) shapes.push({ id: `part-${shapes.length + 1}`, name: el.getAttribute('id') || `${el.localName} ${shapes.length + 1}`, contours });
   }
   visit(root, base, 0);

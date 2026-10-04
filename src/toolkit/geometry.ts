@@ -79,7 +79,7 @@ function simplifyRing(points:Point[],tolerance:number):Point[]{
  * an outer ring makes the whole part fall back to its convex hull. */
 function outerRings(shape:Shape):Point[][]{
   if(shape.contours.some(c=>c.points.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y))))throw new Error('Invalid shape coordinates.');
-  const closed=shape.contours.filter(c=>c.closed&&c.points.length>=3&&Math.abs(signedArea(c.points))>=0.001);
+  const closed=shape.contours.filter(c=>c.closed&&c.layer!=='engrave'&&c.points.length>=3&&Math.abs(signedArea(c.points))>=0.001);
   if(!closed.length)throw new Error('Nesting needs closed, non-empty outlines. Use Vector cleanup to inspect open paths.');
   const info=closed.map(c=>({c,box:boxOf(c.points),area:Math.abs(signedArea(c.points))}));
   const outers=info.filter((a,i)=>!info.some((b,j)=>j!==i&&(b.area>a.area||b.area===a.area&&j<i)&&boxWithin(a.box,b.box)&&inside(a.c.points[0],b.c.points)));
@@ -89,6 +89,44 @@ function outerRings(shape:Shape):Point[][]{
   const stray=shape.contours.filter(c=>!outerContours.has(c)&&!closedContours.has(c));
   if(stray.some(c=>c.points.length&&!covered(c.points)))return [convexHull(shape.contours.flatMap(c=>c.points))];
   return outers.map(o=>o.c.points);
+}
+/** Parts as a cutting job sees them. A shape that lies on another part's
+ *  material (an engraving, a hole or a line drawn as its own element) travels
+ *  with that part. What lies on no part and has no closed cut outline of its
+ *  own cannot be placed: it is left out and counted. */
+export function partsForNesting(d:Drawing):{drawing:Drawing;loose:number}{
+  const info=d.shapes.map(s=>{
+    const rings=s.contours.filter(c=>c.closed&&c.layer!=='engrave'&&c.points.length>=3&&Math.abs(signedArea(c.points))>=0.001);
+    return {rings,box:boxOf(s.contours.flatMap(c=>c.points)),area:rings.reduce((a,c)=>Math.max(a,Math.abs(signedArea(c.points))),0)};
+  });
+  // Material is inside an odd number of a part's cut rings: holes are not material.
+  const onMaterial=(p:Point,rings:Contour[])=>rings.reduce((n,c)=>n+(inside(p,c.points)?1:0),0)%2===1;
+  const within=(a:Bounds,b:Bounds)=>a.x>=b.x&&a.y>=b.y&&a.x+a.width<=b.x+b.width&&a.y+a.height<=b.y+b.height;
+  // Possible containers, bucketed by the grid cells their bounds cover.
+  const cell=Math.max(d.width,d.height,1)/64,grid=new Map<string,number[]>();
+  info.forEach((x,i)=>{if(!x.rings.length)return;
+    for(let gx=Math.floor(x.box.x/cell);gx<=Math.floor((x.box.x+x.box.width)/cell);gx++)for(let gy=Math.floor(x.box.y/cell);gy<=Math.floor((x.box.y+x.box.height)/cell);gy++){const k=`${gx},${gy}`,l=grid.get(k);if(l)l.push(i);else grid.set(k,[i]);}});
+  const parent=d.shapes.map((s,i)=>{
+    const pts=s.contours.flatMap(c=>c.points);if(!pts.length)return -1;
+    const step=Math.max(1,Math.floor(pts.length/16)),samples=[...pts.filter((_,k)=>k%step===0),pts[pts.length-1]];
+    let best=-1;
+    for(const j of grid.get(`${Math.floor(pts[0].x/cell)},${Math.floor(pts[0].y/cell)}`)??[]){
+      // Strictly larger containers only, so no shape can end up inside itself.
+      if(j===i||info[j].area<=info[i].area||(best>=0&&info[j].area>=info[best].area)||!within(info[i].box,info[j].box))continue;
+      if(samples.every(p=>onMaterial(p,info[j].rings)))best=j;
+    }
+    return best;
+  });
+  const root=(i:number):number=>parent[i]<0?i:root(parent[i]);
+  const groups=new Map<number,number[]>();
+  d.shapes.forEach((_,i)=>{const r=root(i),l=groups.get(r);if(l)l.push(i);else groups.set(r,[i]);});
+  const shapes:Shape[]=[];let loose=0;
+  for(const [r,members] of [...groups].sort((a,b)=>a[0]-b[0])){
+    if(!info[r].rings.length){loose+=members.length;continue;}
+    const own=d.shapes[r],others=members.filter(i=>i!==r).map(i=>d.shapes[i]);
+    shapes.push(others.length?{...own,name:[...new Set([own.name,...others.map(o=>o.name)])].join(' / '),contours:[...own.contours,...others.flatMap(o=>o.contours)]}:own);
+  }
+  return {drawing:{...d,shapes},loose};
 }
 function rotateShape(shape:Shape,angle:number){const a=angle*Math.PI/180,cos=Math.cos(a),sin=Math.sin(a);return mapShape(shape,p=>({x:p.x*cos-p.y*sin,y:p.x*sin+p.y*cos}));}
 const CHUNK=16;

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { bounds, shapesCollide, nest, repeatDrawing, kerfDrawing, cleanDrawing, contourKey } from '../src/toolkit/geometry';
+import { bounds, shapesCollide, nest, repeatDrawing, kerfDrawing, cleanDrawing, contourKey, partsForNesting } from '../src/toolkit/geometry';
 import { toSvg, toDxf } from '../src/toolkit/export';
 import type { Shape } from '../src/toolkit/types';
 import { sampleDrawing } from '../src/toolkit/samples';
@@ -92,4 +92,22 @@ test('each part can have its own quantity, and 0 leaves it out',()=>{
  expect(()=>nest([rect('a',0,0,20,15)],{...opts,counts:[0]})).toThrow();
  expect(()=>nest([rect('a',0,0,20,15)],{...opts,counts:[1.5]})).toThrow();
  expect(()=>nest([rect('a',0,0,20,15),rect('b',0,0,5,5)],{...opts,counts:[1]})).toThrow();
+});
+test('engravings and holes drawn as their own shapes travel with the part they lie on', () => {
+  const circle = (id: string, cx: number, cy: number, r: number, layer?: 'engrave'): Shape => ({ id, name: id, contours: [{ closed: true, ...(layer ? { layer } : {}), points: Array.from({ length: 24 }, (_, i) => ({ x: cx + r * Math.cos(i * Math.PI / 12), y: cy + r * Math.sin(i * Math.PI / 12) })) }] });
+  const plate: Shape = { id: 'plate', name: 'plate', contours: [rect('o', 0, 0, 100, 60).contours[0], rect('h', 60, 10, 30, 30).contours[0]] };
+  const shapes = [
+    circle('logo', 25, 30, 10, 'engrave'), plate, circle('hole', 25, 30, 3),
+    { id: 'text', name: 'text', contours: [{ closed: false, layer: 'engrave' as const, points: [{ x: 5, y: 50 }, { x: 40, y: 50 }] }] },
+    rect('in-cutout', 65, 15, 10, 10), rect('other', 120, 0, 20, 20),
+    { id: 'stray', name: 'stray', contours: [{ closed: false, points: [{ x: 150, y: 5 }, { x: 190, y: 5 }] }] },
+  ];
+  const { drawing, loose } = partsForNesting({ width: 200, height: 100, shapes });
+  expect(drawing.shapes.map(s => s.id)).toEqual(['plate', 'in-cutout', 'other']);
+  expect(drawing.shapes[0].contours).toHaveLength(5);
+  expect(loose).toBe(1);
+  const result = nest(drawing.shapes, { width: 300, height: 200, margin: 2, gap: 2, copies: 1, rotate: false });
+  const placed = result.sheets[0].find(s => s.id.startsWith('plate'))!;
+  const box = bounds(placed), logo = placed.contours.find(c => c.layer === 'engrave' && c.closed)!;
+  for (const p of logo.points) { expect(p.x).toBeGreaterThan(box.x); expect(p.x).toBeLessThan(box.x + box.width); }
 });

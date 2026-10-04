@@ -165,3 +165,12 @@ test('grouping preserves distinct layer names and handles dense enclosed contour
   expect(r.shapes[0].name).toBe('OUTER / HOLE / ISLAND');
   expect(r.shapes[0].contours.map(c=>c.points.length)).toEqual([4000,4000,4000]);
 });
+test('blue entities, blue layers and the ENGRAVE layer import as engraving', () => {
+  const tables = [0,'SECTION',2,'TABLES',0,'TABLE',2,'LAYER',0,'LAYER',2,'MARKS',62,5,0,'LAYER',2,'OUTLINE',62,1,0,'ENDTAB',0,'ENDSEC'];
+  const ents = [0,'LINE',8,'0',62,5,10,0,20,0,11,10,21,0, 0,'LINE',8,'MARKS',10,0,20,5,11,10,21,5, 0,'LINE',8,'OUTLINE',10,0,20,10,11,10,21,10, 0,'LINE',8,'ENGRAVE',10,0,20,15,11,10,21,15, 0,'LINE',8,'MARKS',62,1,10,0,20,20,11,10,21,20];
+  const source = [0,'SECTION',2,'HEADER',9,'$INSUNITS',70,4,0,'ENDSEC',...tables,0,'SECTION',2,'ENTITIES',...ents,0,'ENDSEC',0,'EOF'].join('\n');
+  const layers = parseDxf(source).shapes.map(s => s.contours[0].layer ?? 'cut');
+  expect(layers).toEqual(['engrave', 'engrave', 'cut', 'engrave', 'cut']);
+  const back = roundtrip([rect(0, 0, 40, 40), { closed: false, layer: 'engrave', points: [{ x: 5, y: 5 }, { x: 20, y: 5 }] }]);
+  expect(back.shapes.flatMap(s => s.contours.map(c => c.layer ?? 'cut')).sort()).toEqual(['cut', 'engrave']);
+});

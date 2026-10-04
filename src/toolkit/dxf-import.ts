@@ -16,7 +16,7 @@ const num = (e: Entity, code: number, fallback?: number) => number(values(e, cod
 const xy = (e: Entity, code = 10): Point => ({ x: num(e, code), y: num(e, code + 10) });
 const same = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y) < 1e-9;
 
-function read(source: string): { entities: Entity[]; units: number } {
+function read(source: string): { entities: Entity[]; units: number; layers: Map<string, number> } {
   if (source.length > 32 * 1024 * 1024 || new TextEncoder().encode(source).length > 32 * 1024 * 1024) fail('File exceeds the 32 MB limit.');
   if (source.startsWith('AutoCAD Binary DXF') || source.includes('\0')) fail('Binary DXF is unsupported; export ASCII DXF.');
   const lines = source.replace(/^\uFEFF/, '').replace(/\r/g, '').split('\n');
@@ -27,7 +27,7 @@ function read(source: string): { entities: Entity[]; units: number } {
     if (!/^\s*\d+\s*$/.test(lines[i])) fail('Invalid DXF group code.');
     pairs.push({ code: Number(lines[i]), value: lines[i + 1].trim() });
   }
-  const entities: Entity[] = [];
+  const entities: Entity[] = [], layers = new Map<string, number>();
   let section = '', units = 0, found = false, eof = false;
   for (let i = 0; i < pairs.length; i++) {
     const p = pairs[i];
@@ -45,6 +45,11 @@ function read(source: string): { entities: Entity[]; units: number } {
     } else if (section === 'HEADER' && p.code === 9 && p.value === '$INSUNITS') {
       if (pairs[i + 1]?.code !== 70) fail('Invalid INSUNITS header.');
       units = number(pairs[++i].value);
+    } else if (section === 'TABLES' && p.code === 0 && p.value === 'LAYER') {
+      // A layer's colour (ACI) is what BYLAYER entities draw with.
+      let name = '', colour = 7;
+      while (i + 1 < pairs.length && pairs[i + 1].code !== 0) { const q = pairs[++i]; if (q.code === 2) name = q.value; else if (q.code === 62) colour = Math.abs(Number(q.value)); }
+      if (name) layers.set(name, colour);
     } else if (section === 'ENTITIES') {
       if (p.code !== 0) fail('Entity is missing its type.');
       const entity: Entity = { type: p.value, pairs: [] };
@@ -53,7 +58,7 @@ function read(source: string): { entities: Entity[]; units: number } {
     }
   }
   if (!found || !eof || section) fail('Missing ENTITIES section or EOF; expected a complete ASCII DXF file.');
-  return { entities, units };
+  return { entities, units, layers };
 }
 
 function planar(e: Entity) {
@@ -81,7 +86,13 @@ function vertices(e: Entity): Vertex[] {
   return result;
 }
 
-function geometry(entities: Entity[], tolerance: number): Shape[] {
+/** Blue (ACI 5), directly or through its layer, or a layer named for engraving, engraves; the rest cuts. */
+function engraves(e: Entity, layers: Map<string, number>) {
+  const layer = values(e, 8)[0] || '0', own = Math.abs(Number(values(e, 62)[0] ?? 256));
+  return /engrave|حفر/i.test(layer) || (own === 0 || own === 256 ? layers.get(layer) : own) === 5;
+}
+
+function geometry(entities: Entity[], tolerance: number, layers: Map<string, number>): Shape[] {
   const shapes: Shape[] = [];
   let nodeCount = 0;
   const add = (points: Point[], p: Point) => {
@@ -211,6 +222,7 @@ function geometry(entities: Entity[], tolerance: number): Shape[] {
     } else fail(`Unsupported entity ${e.type}. Convert it to flat LINE, POLYLINE, LWPOLYLINE, CIRCLE, ARC, ELLIPSE or SPLINE geometry before import.`);
     if (contour.closed && same(contour.points[0], contour.points[contour.points.length - 1])) contour.points.pop();
     if (contour.points.length < 2 || contour.points.every(p => same(p, contour.points[0]))) fail(`${e.type} has no usable length.`);
+    if (engraves(e, layers)) contour.layer = 'engrave';
     shapes.push({ id: `dxf-${shapes.length + 1}`, name: values(e, 8)[0] || e.type, contours: [contour] });
     if (shapes.length > 20000) fail('Drawing exceeds the 20,000 shape limit.');
   }
@@ -318,8 +330,9 @@ function groupContained(shapes: Shape[]): Shape[] {
   for(let i=0;i<shapes.length;i++) for(let j=i+1;j<shapes.length;j++) {
     if(!paths[i].closed || !paths[j].closed || !overlaps(boxes[i],boxes[j]))continue;
     if(boundariesTouch(edges[i],edges[j])) {blocked.add(i);blocked.add(j);continue;}
-    if(encloses(boxes[i],boxes[j]) && inside(paths[j].points[0],paths[i].points))containers[j].push(i);
-    if(encloses(boxes[j],boxes[i]) && inside(paths[i].points[0],paths[j].points))containers[i].push(j);
+    // Only a cut outline is material that something else sits on.
+    if(encloses(boxes[i],boxes[j]) && paths[i].layer!=='engrave' && inside(paths[j].points[0],paths[i].points))containers[j].push(i);
+    if(encloses(boxes[j],boxes[i]) && paths[j].layer!=='engrave' && inside(paths[i].points[0],paths[j].points))containers[i].push(j);
   }
   const roots=shapes.map((_,i)=>{
     if(blocked.has(i))return i;
@@ -345,12 +358,12 @@ export function parseDxf(source: string, options: Options = {}): Drawing {
   let scale = options.unit ? { mm: 1, cm: 10, in: 25.4 }[options.unit] : unitScales[units];
   if (!scale) fail(units === 0 ? 'This file is unitless. Choose mm, cm or inches explicitly.' : `Unsupported INSUNITS ${units}; choose the source unit explicitly.`);
   // An explicit target width needs a coarse bounds pass before choosing the final mm tolerance.
-  let shapes = geometry(entities, options.physicalWidthMm === undefined ? 0.05 / scale : Infinity);
+  let shapes = geometry(entities, options.physicalWidthMm === undefined ? 0.05 / scale : Infinity, parsed.layers);
   let box = bounds(shapes);
   if (options.physicalWidthMm !== undefined) {
     if (!Number.isFinite(options.physicalWidthMm) || options.physicalWidthMm <= 0 || box.width <= 0) fail('Physical width must be positive and the drawing must have nonzero width.');
     scale = options.physicalWidthMm / box.width;
-    shapes = geometry(entities, 0.05 / scale);
+    shapes = geometry(entities, 0.05 / scale, parsed.layers);
     box = bounds(shapes);
     scale = options.physicalWidthMm / box.width;
   }

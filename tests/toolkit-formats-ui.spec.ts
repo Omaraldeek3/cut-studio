@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {readFileSync} from 'node:fs';
 import {toDxf} from '../src/toolkit/export';
 import {referenceDrawing} from '../src/toolkit/samples';
 const data=toDxf(referenceDrawing);
@@ -39,4 +40,20 @@ test('cleanup preview shows the nodes, before and after, and zooms in to them',a
  await page.getByRole('button',{name:'Original',exact:true}).click();await expect(caption).toContainText('22 nodes');
  await page.getByRole('button',{name:'Zoom in',exact:true}).click();await expect(page.locator('.vector-paper')).toHaveClass(/zoomed/);
  await page.getByRole('button',{name:'Show nodes',exact:true}).click();await expect(page.locator('.node-marks')).toHaveCount(0);
+});
+test('an engraved circle drawn on a plate stays on it through nesting and exports as engraving',async({page})=>{
+ const svg='<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100"><rect x="10" y="10" width="60" height="40" fill="none" stroke="red"/><circle cx="40" cy="30" r="8" fill="none" stroke="blue"/><path d="M80 80 L95 80" stroke="red"/></svg>';
+ await page.goto('/en/nesting');await page.getByLabel('Import vector file').setInputFiles({name:'plate.svg',mimeType:'image/svg+xml',buffer:Buffer.from(svg)});
+ await expect(page.getByRole('status')).toContainText('1 lines lie on no part');
+ await page.getByRole('button',{name:'Arrange parts',exact:true}).click();await expect(page.getByText('Layout ready',{exact:true})).toBeVisible();
+ const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Export SVG',exact:true}).click();
+ const out=readFileSync(await (await pending).path(),'utf8');
+ const blue=/<path d="([^"]+)"[^>]*stroke="#0000ff"/.exec(out)?.[1]??'',red=/<path d="([^"]+)"[^>]*stroke="#ff0000"/.exec(out)?.[1]??'';
+ const nums=(d:string)=>(d.match(/-?\d+(\.\d+)?/g)||[]).map(Number);
+ const xs=(d:string)=>nums(d).filter((_,i)=>i%2===0),ys=(d:string)=>nums(d).filter((_,i)=>i%2===1);
+ expect(blue).not.toBe('');
+ // The engraving (its first point; the rest are arcs) lies within the plate, whose path is all straight lines.
+ const [bx,by]=nums(blue);
+ expect(bx).toBeGreaterThan(Math.min(...xs(red)));expect(bx).toBeLessThan(Math.max(...xs(red)));
+ expect(by).toBeGreaterThan(Math.min(...ys(red)));expect(by).toBeLessThan(Math.max(...ys(red)));
 });

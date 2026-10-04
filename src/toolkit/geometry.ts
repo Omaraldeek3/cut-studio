@@ -216,6 +216,98 @@ function outlinesCollide(a:Outline,dx:number,dy:number,b:Outline,gap:number){
 }
 const empty:Outline={rings:[],box:{x:Infinity,y:Infinity,width:0,height:0}};
 type Placement={kind:number;angle:number;x:number;y:number;id:string;name:string;outline:Outline;box:Bounds};
+/** Outline nodes the compaction may work with across all part kinds. */
+const COMPACT_NODE_BUDGET=60000;
+type Packed={kind:number;angle:number;x:number;y:number;w:number;h:number;id:string;name:string};
+/** Slides rectangle-packed pieces up, then left, until their outlines (not
+ *  their rectangles) come within the spacing of a neighbour or the margin,
+ *  trying each piece half turned too when rotation is allowed. A move is a
+ *  jump across the clear space the rectangles show, then steps shorter than
+ *  the spacing, so a piece never passes through another. The room this frees
+ *  on a sheet is refilled with pieces from later sheets, which can empty
+ *  them. Returns the sheets still in use. */
+function compact(sheets:Packed[][],shapes:Shape[],o:NestOptions,margin:number,gap:number,deadline:number):Packed[][]{
+  const rings=shapes.map(outerRings);
+  let tolerance=SIMPLIFY_STEPS[SIMPLIFY_STEPS.length-1],simple=rings;
+  for(const step of SIMPLIFY_STEPS){
+    const next=rings.map(parts=>parts.map(ring=>simplifyRing(ring,step)));
+    if(next.reduce((n,parts)=>n+parts.reduce((m,r)=>m+r.length,0),0)<=COMPACT_NODE_BUDGET){tolerance=step;simple=next;break;}
+  }
+  // The simplified outline is within the tolerance of the real one on each side.
+  const spacing=gap+2*tolerance,step=Math.max(0.05,Math.min(1,spacing/2));
+  // Outlines anchored at their part's bounding corner, one per kind and turn.
+  const cache=new Map<string,Outline>();
+  const outline=(p:Packed)=>{
+    const key=`${p.kind}:${p.angle}`;let found=cache.get(key);
+    if(!found){
+      const b=bounds(rotateShape(shapes[p.kind],p.angle));
+      const turned=rotateShape({id:'',name:'',contours:simple[p.kind].map(points=>({closed:true,points}))},p.angle).contours.map(c=>c.points);
+      found=prepare(turned,-b.x,-b.y);cache.set(key,found);
+    }
+    return found;
+  };
+  /** Slides one piece up (or left) as far as it goes, in its best half turn. */
+  function settle(sheet:Packed[],p:Packed,up:boolean){
+    // Neighbours that the piece could meet on its way.
+    const near=sheet.filter(q=>q!==p&&(up?q.x<p.x+p.w+spacing&&q.x+q.w+spacing>p.x&&q.y<p.y+p.h+spacing:q.y<p.y+p.h+spacing&&q.y+q.h+spacing>p.y&&q.x<p.x+p.w+spacing));
+    const start=up?p.y:p.x;
+    const slide=(angle:number)=>{
+      const own=outline({...p,angle});
+      const clear=(at:number)=>{const x=up?p.x:at,y=up?at:p.y;return x>=margin-1e-9&&y>=margin-1e-9&&near.every(q=>!outlinesCollide(own,x-q.x,y-q.y,outline(q),spacing));};
+      // A turned piece that would overlap where it stands cannot take the turn.
+      if(angle!==p.angle&&!clear(start))return start;
+      let lead=start;
+      for(let guard=0;guard<2000;guard++){
+        // Jump across the space no neighbour's rectangle reaches into; a
+        // neighbour already level with the piece leaves no clear jump.
+        const free=Math.min(lead-margin,...near.map(q=>{const far=up?q.y+q.h:q.x+q.w;return far<=lead?lead-far-spacing:0;}));
+        if(free>step){lead-=free;continue;}
+        if(clear(lead-step))lead-=step;else break;
+      }
+      return lead;
+    };
+    let bestAngle=p.angle,bestLead=slide(p.angle);
+    if(o.rotate){const flipped=(p.angle+180)%360,lead=slide(flipped);if(lead<bestLead-1e-6){bestLead=lead;bestAngle=flipped;}}
+    if(up)p.y=bestLead;else p.x=bestLead;
+    p.angle=bestAngle;
+    return bestLead<start-1e-9;
+  }
+  function settleAll(sheet:Packed[]){
+    for(let round=0;round<6&&Date.now()<deadline;round++){
+      let moved=0;
+      for(const up of [true,false])for(const p of [...sheet].sort(up?(a,b)=>a.y-b.y||a.x-b.x:(a,b)=>a.x-b.x||a.y-b.y)){if(Date.now()>deadline)break;if(settle(sheet,p,up))moved++;}
+      if(!moved)break;
+    }
+  }
+  /** The lowest, then leftmost, place for a w × h rectangle above which the
+   *  sheet's pieces leave room, on a 1 mm column grid. */
+  function spot(sheet:Packed[],w:number,h:number){
+    const cols=Math.ceil(o.width),floor=new Float64Array(cols+1).fill(margin);
+    for(const q of sheet){const a=Math.max(0,Math.floor(q.x-spacing)),b=Math.min(cols,Math.ceil(q.x+q.w+spacing));for(let c=a;c<b;c++)floor[c]=Math.max(floor[c],q.y+q.h+spacing);}
+    let best:{x:number;y:number}|null=null;
+    for(let c=Math.ceil(margin);c+w<=o.width-margin+1e-9;c++){
+      let y=margin;for(let k=c;k<Math.min(cols,Math.ceil(c+w));k++)y=Math.max(y,floor[k]);
+      if(y+h<=o.height-margin+1e-9&&(!best||y<best.y-1e-9))best={x:c,y};
+    }
+    return best;
+  }
+  for(let k=0;k<sheets.length&&Date.now()<deadline;k++){
+    settleAll(sheets[k]);
+    // Pull pieces from later sheets into the room the sheet now has, biggest first.
+    const later=sheets.slice(k+1).flatMap((sheet,i)=>sheet.map(p=>({p,from:k+1+i}))).sort((a,b)=>b.p.w*b.p.h-a.p.w*a.p.h);
+    for(const {p,from} of later){
+      if(Date.now()>deadline)break;
+      const turns=o.rotate?[[p.angle,p.w,p.h],[(p.angle+90)%360,p.h,p.w]] as const:[[p.angle,p.w,p.h]] as const;
+      let chosen:{x:number;y:number;angle:number;w:number;h:number}|null=null;
+      for(const [angle,w,h] of turns){const at=spot(sheets[k],w,h);if(at&&(!chosen||at.y<chosen.y))chosen={...at,angle,w,h};}
+      if(!chosen)continue;
+      sheets[from].splice(sheets[from].indexOf(p),1);
+      Object.assign(p,chosen);sheets[k].push(p);
+      for(let i=0;i<3&&(settle(sheets[k],p,true)||settle(sheets[k],p,false));i++);
+    }
+  }
+  return sheets.filter(sheet=>sheet.length);
+}
 /** The turn, in degrees from 0 to 90, that gives the shape its smallest
  *  bounding rectangle: one of its convex hull's edges lies along an axis. */
 export function snugAngle(shape:Shape):number{
@@ -308,7 +400,8 @@ function packByBounds(shapes:Shape[],counts:number[],o:NestOptions,start:number)
     const r=pack([...instances].sort(order),fit);
     if(!chosen||r.score<chosen.score)chosen=r;
   }
-  const out=chosen!.sheets.map(s=>s.placed.map(p=>({...moveShape(normalize(kinds[p.kind].shape,p.angle),margin+p.x,margin+p.y),id:p.id,name:p.name})));
+  const placed=chosen!.sheets.map(s=>s.placed.map(p=>({kind:p.kind,angle:p.angle,x:margin+p.x,y:margin+p.y,w:p.w-gap,h:p.h-gap,id:p.id,name:p.name})));
+  const out=compact(placed,kinds.map(k=>k.shape),o,margin,gap,start+14000).map(sheet=>sheet.map(p=>({...moveShape(normalize(kinds[p.kind].shape,p.angle),p.x,p.y),id:p.id,name:p.name})));
   return {sheets:out,unplaced:chosen!.unplaced,total:instances.length,area:chosen!.area,elapsed:Date.now()-start,outlineTolerance:0,byBounds:true};
 }
 export function nest(allShapes:Shape[],o:NestOptions):NestResult {

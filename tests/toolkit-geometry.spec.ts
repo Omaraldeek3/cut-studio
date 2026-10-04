@@ -144,7 +144,9 @@ test('a big job of hundreds of parts packs quickly, without overlaps, inside the
     for (const b of boxes) if (b.x < 5 || b.y < 5 || b.x + b.width > 495 || b.y + b.height > 695) outside++;
     for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
       const a = boxes[i], b = boxes[j];
-      if (!(a.x + a.width + 3 <= b.x + 1e-6 || b.x + b.width + 3 <= a.x + 1e-6 || a.y + a.height + 3 <= b.y + 1e-6 || b.y + b.height + 3 <= a.y + 1e-6)) touching++;
+      // Rectangle parts: the distance between their rectangles is the distance between the parts.
+      const dx = Math.max(0, b.x - (a.x + a.width), a.x - (b.x + b.width)), dy = Math.max(0, b.y - (a.y + a.height), a.y - (b.y + b.height));
+      if (Math.hypot(dx, dy) < 3 - 1e-6) touching++;
     }
   }
   expect({ outside, touching }).toEqual({ outside: 0, touching: 0 });
@@ -173,4 +175,40 @@ test('turning pieces to any angle packs tilted parts on fewer sheets, small jobs
     expect(turned.sheets.length).toBeLessThan(square.sheets.length);
     for (const sheet of turned.sheets) for (const part of sheet) { const b = bounds(part); expect(b.x).toBeGreaterThanOrEqual(2); expect(b.x + b.width).toBeLessThanOrEqual(198 + 1e-6); }
   }
+});
+
+test('after packing by rectangle, outlines are pressed together without touching, saving sheets', () => {
+  type P = { x: number; y: number };
+  const segDist = (p: P, a: P, b: P) => { const dx = b.x - a.x, dy = b.y - a.y, l = dx * dx + dy * dy, t = l ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l)) : 0; return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy); };
+  const crosses = (a: P, b: P, c: P, d: P) => { const o = (p: P, q: P, r: P) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)); return o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0; };
+  const gapBetween = (A: P[], B: P[]) => {
+    let m = Infinity;
+    for (let i = 0; i < A.length; i++) for (let j = 0; j < B.length; j++) {
+      const a = A[i], a2 = A[(i + 1) % A.length], b = B[j], b2 = B[(j + 1) % B.length];
+      if (crosses(a, a2, b, b2)) return 0;
+      m = Math.min(m, segDist(a, b, b2), segDist(a2, b, b2), segDist(b, a, a2), segDist(b2, a, a2));
+    }
+    return m;
+  };
+  const tri = (i: number): Shape => { const s = 15 + (i * 7) % 20; return { id: `t${i}`, name: `t${i}`, contours: [{ closed: true, points: [{ x: 0, y: 0 }, { x: s, y: 0 }, { x: 0, y: s }] }] }; };
+  const shapes = Array.from({ length: 400 }, (_, i) => tri(i));
+  const o = { width: 300, height: 300, margin: 5, gap: 2, copies: 1, rotate: true };
+  const r = nest(shapes, o);
+  expect(r.byBounds).toBe(true);
+  expect(r.unplaced).toEqual([]);
+  expect(r.sheets.flat()).toHaveLength(400);
+  // Rectangles alone need 4 sheets for these triangles.
+  expect(r.sheets.length).toBeLessThanOrEqual(3);
+  let closest = Infinity, outside = 0;
+  for (const sheet of r.sheets) {
+    const rings = sheet.map(s => s.contours[0].points), boxes = sheet.map(bounds);
+    boxes.forEach(b => { if (b.x < 5 - 1e-6 || b.y < 5 - 1e-6 || b.x + b.width > 295 + 1e-6 || b.y + b.height > 295 + 1e-6) outside++; });
+    for (let i = 0; i < rings.length; i++) for (let j = i + 1; j < rings.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      if (a.x > b.x + b.width + 3 || b.x > a.x + a.width + 3 || a.y > b.y + b.height + 3 || b.y > a.y + a.height + 3) continue;
+      closest = Math.min(closest, gapBetween(rings[i], rings[j]));
+    }
+  }
+  expect(outside).toBe(0);
+  expect(closest).toBeGreaterThanOrEqual(2 - 1e-6);
 });

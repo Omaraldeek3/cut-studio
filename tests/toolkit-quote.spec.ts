@@ -38,3 +38,10 @@ test('profit can be a margin of the selling price instead of a markup on cost', 
   expect(margin.total).toBeCloseTo(142.857, 2); expect(margin.profit / margin.total).toBeCloseTo(0.3);
   expect(() => quote(null, { ...base, profitMode: 'margin', profit: 100 })).toThrow(/Profit must be between 0 and 95/);
 });
+test('finishing is charged per piece, and a small job pays at least the minimum', () => {
+  const base = { ...defaultQuote, copies: 10, sheetPrice: 0, sheets: 0, minutes: 0, labour: 0, overhead: 0, profit: 0 };
+  const q = quote(null, { ...base, finishing: 2 });
+  expect(q.finishing).toBe(20); expect(q.total).toBe(20); expect(q.minimumApplied).toBe(false);
+  const small = quote(null, { ...base, finishing: 2, minimum: 50 });
+  expect(small.total).toBe(50); expect(small.minimumApplied).toBe(true); expect(small.profit).toBe(30); expect(small.perPiece).toBe(5);
+});

@@ -6,6 +6,7 @@ import { defaultTool, descriptions, groupOf, groups, slugs, titles, toolFromSlug
 import { Icon } from './ui';
 import { NestWorkspace, EditWorkspace, KerfWorkspace } from './vector-workspaces';
 import { QuoteWorkspace } from './quote-workspace';
+import type { NestedJob } from './quote';
 import { BoxWorkspace } from './box-workspace';
 import { EngraveWorkspace } from './engrave-workspace';
 import { VectorizeWorkspace } from './vectorize-workspace';
@@ -33,11 +34,14 @@ export default function Toolkit({lang}:{lang:Language}){
  const [drawing,setDrawing]=useState<Drawing|null>(sampleDrawing),[filename,setFilename]=useState('studio-samples.svg'),[guide,setGuide]=useState(false),[query,setQuery]=useState('');
  const index=lang==='ar'?1:0;
  function onNest(d:Drawing){setDrawing(d);setFilename('prepared-artwork.svg');setActive('nest');}
+ // A nesting result goes to the quote with its sheets and pieces; its parts become the artwork to time.
+ const [job,setJob]=useState<NestedJob|null>(null);
+ function onQuote(j:NestedJob){setJob(j);setDrawing(j.drawing);setFilename(`nested-${j.sheets}-sheets.svg`);setActive('quote');}
  const props={lang,drawing,setDrawing,filename,setFilename,onNest};
  // Hands artwork from one tool to another, e.g. lettering to contour.
  function onSend(d:Drawing,tool:ToolId,name='artwork.svg'){setDrawing(d);setFilename(name);setActive(tool);}
  function workspace(){switch(active){
-  case 'nest':return <NestWorkspace {...props}/>;
+  case 'nest':return <NestWorkspace {...props} onQuote={onQuote}/>;
   case 'trace':return <VectorizeWorkspace lang={lang} onNest={onNest}/>;
   case 'upscale':return <UpscaleWorkspace lang={lang}/>;
   case 'tiles':return <TilingWorkspace lang={lang}/>;
@@ -45,7 +49,7 @@ export default function Toolkit({lang}:{lang:Language}){
   case 'lettering':return <LetteringWorkspace lang={lang} onSend={onSend}/>;
   case 'sheet':return <SheetWorkspace lang={lang}/>;
   case 'clean':case 'repeat':return <EditWorkspace key={active} {...props} tool={active}/>;
-  case 'quote':return <QuoteWorkspace {...props}/>;
+  case 'quote':return <QuoteWorkspace {...props} job={job&&job.drawing===drawing?job:null}/>;
   case 'kerf':return <KerfWorkspace lang={lang}/>;
   case 'engrave':return <EngraveWorkspace lang={lang}/>;
   case 'box':return <BoxWorkspace lang={lang} onNest={onNest}/>;

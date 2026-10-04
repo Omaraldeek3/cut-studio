@@ -6,17 +6,18 @@ import { ErrorNote, Icon, NumberField, Section, Toggle } from './ui';
 import { VectorInput } from './vector-input';
 import { download } from './export';
 import { duration } from './generators';
-import { defaultQuote, quote, quoteMessage, type QuoteOptions } from './quote';
+import { defaultQuote, quote, quoteMessage, type NestedJob, type QuoteOptions } from './quote';
 
 /* One place to price a job: material, machine time (timed from the artwork's
    lengths, or typed in), labour, overhead and profit, down to a price per
    piece and a message ready to send the customer. */
 
-type Props = { lang: Language; drawing: Drawing | null; setDrawing: (d: Drawing | null) => void; filename: string; setFilename: (n: string) => void };
+type Props = { lang: Language; drawing: Drawing | null; setDrawing: (d: Drawing | null) => void; filename: string; setFilename: (n: string) => void; job?: NestedJob | null };
 
 export function QuoteWorkspace(props: Props) {
-  const { lang, drawing, filename } = props;
-  const [o, setO] = useState<QuoteOptions>(defaultQuote);
+  const { lang, drawing, filename, job: nested } = props;
+  // A job sent from nesting fills in its sheets and pieces; its parts are the whole order.
+  const [o, setO] = useState<QuoteOptions>(() => nested ? { ...defaultQuote, copies: nested.pieces, sheets: nested.sheets, artwork: 'order' } : defaultQuote);
   const set = <K extends keyof QuoteOptions>(key: K) => (value: QuoteOptions[K]) => setO(v => ({ ...v, [key]: value }));
   const [currency, setCurrency] = useState('ILS');
   const [timed, setTimed] = useState(true);
@@ -30,7 +31,7 @@ export function QuoteWorkspace(props: Props) {
   const time = q ? duration(q.seconds) : '—';
   const message = q ? quoteMessage(q, currency, job.trim(), lang, time) : '';
   const copy = async () => { try { await navigator.clipboard.writeText(message); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { setCopied(false); } };
-  const csv = () => { if (!q) return; download(['Item,Amount,Currency', `Material,${money(q.material)},${currency}`, `Machine (${time}),${money(q.machine)},${currency}`, `Labour,${money(q.labour)},${currency}`, `Overhead,${money(q.overhead)},${currency}`, `Profit,${money(q.profit)},${currency}`, `Total,${money(q.total)},${currency}`, `Per piece,${money(q.perPiece)},${currency}`].join('\n') + '\n', 'job-quote.csv', 'text/csv'); };
+  const csv = () => { if (!q) return; download(['Item,Amount,Currency', `Material,${money(q.material)},${currency}`, `Machine (${time}),${money(q.machine)},${currency}`, `Labour,${money(q.labour)},${currency}`, `Finishing,${money(q.finishing)},${currency}`, `Overhead,${money(q.overhead)},${currency}`, `Profit,${money(q.profit)},${currency}`, `Total${q.minimumApplied ? ' (minimum price)' : ''},${money(q.total)},${currency}`, `Per piece,${money(q.perPiece)},${currency}`].join('\n') + '\n', 'job-quote.csv', 'text/csv'); };
 
   return <div className="workspace"><aside className="controls">
     <Section title={tx(lang, 'The job', 'العمل')} number="01">
@@ -45,7 +46,7 @@ export function QuoteWorkspace(props: Props) {
         <NumberField label={tx(lang, 'Sheet price', 'سعر اللوح')} value={o.sheetPrice} onChange={set('sheetPrice')} max={1e7} step={0.5} unit={currency}/>
         <NumberField label={tx(lang, 'Sheets used', 'الألواح المستخدمة')} value={o.sheets} onChange={set('sheets')} max={10000} step={0.1}/>
       </div>
-      <p className="micro">{tx(lang, 'Nesting tells you how many sheets the job fills.', 'ترتيب القطع يخبرك كم لوحاً يحتاج العمل.')}</p>
+      {nested ? <p className="micro from-nesting">{tx(lang, `From the nesting: ${nested.sheets} sheets of ${nested.sheetWidth} × ${nested.sheetHeight} mm, ${nested.pieces} pieces.`, `من الترتيب: ${nested.sheets} لوح بمقاس ${nested.sheetWidth} × ${nested.sheetHeight} مم، و${nested.pieces} قطعة.`)}</p> : <p className="micro">{tx(lang, 'Nesting tells you how many sheets the job fills: Price this job there brings them here.', 'ترتيب القطع يخبرك كم لوحاً يحتاج العمل، وزر «سعّر هذا العمل» هناك ينقلها إلى هنا.')}</p>}
     </Section>
     <Section title={tx(lang, 'Machine time', 'وقت الماكينة')} number="03">
       <Toggle label={tx(lang, 'Time it from the artwork', 'احسبه من التصميم')} value={timed} onChange={setTimed}/>
@@ -60,9 +61,16 @@ export function QuoteWorkspace(props: Props) {
     </Section>
     <Section title={tx(lang, 'Labour and margin', 'العمل والربح')} number="04">
       <NumberField label={tx(lang, 'Labour and extras for the job', 'أجرة العمل والإضافات للعمل كله')} value={o.labour} onChange={set('labour')} max={1e7} step={0.5} unit={currency}/>
+      <p className="micro">{tx(lang, 'Design, machine setup, installation: once for the whole job.', 'التصميم وتجهيز الماكينة والتركيب: مرة واحدة للعمل كله.')}</p>
+      <NumberField label={tx(lang, 'Finishing per piece', 'التشطيب لكل قطعة')} value={o.finishing} onChange={set('finishing')} max={1e6} step={0.1} unit={currency}/>
+      <p className="micro">{tx(lang, 'Sanding, painting, assembly: times the quantity.', 'الصنفرة والدهان والتجميع: تُضرب في الكمية.')}</p>
       <div className="field-pair"><NumberField label={tx(lang, 'Overhead', 'مصاريف عامة')} value={o.overhead} onChange={set('overhead')} max={1000} unit="%"/><NumberField label={tx(lang, 'Profit', 'الربح')} value={o.profit} onChange={set('profit')} max={o.profitMode === 'margin' ? 95 : 1000} unit="%"/></div>
       <div className="field"><span>{tx(lang, 'Profit is a share of', 'الربح نسبة من')}</span><div className="sheet-tabs" role="group" aria-label={tx(lang, 'Profit is a share of', 'الربح نسبة من')}>{([['markup', tx(lang, 'The cost', 'التكلفة')], ['margin', tx(lang, 'The selling price', 'سعر البيع')]] as const).map(([k, label]) => <button key={k} type="button" className={o.profitMode === k ? 'selected' : ''} aria-pressed={o.profitMode === k} onClick={() => set('profitMode')(k)}>{label}</button>)}</div></div>
       <p className="micro">{o.profitMode === 'markup' ? tx(lang, `A cost of 100 sells for ${(100 * (1 + o.profit / 100)).toFixed(2)}.`, `تكلفة ١٠٠ تُباع بـ ${(100 * (1 + o.profit / 100)).toFixed(2)}.`) : tx(lang, `${o.profit}% of the selling price is profit: a cost of 100 sells for ${o.profit < 100 ? (100 / (1 - o.profit / 100)).toFixed(2) : '—'}.`, `${o.profit}٪ من سعر البيع ربح: تكلفة ١٠٠ تُباع بـ ${o.profit < 100 ? (100 / (1 - o.profit / 100)).toFixed(2) : '—'}.`)}</p>
+    </Section>
+    <Section title={tx(lang, 'Minimum order', 'الحد الأدنى للطلب')} number="05">
+      <NumberField label={tx(lang, 'Minimum price', 'أقل سعر للطلب')} value={o.minimum} onChange={set('minimum')} max={1e8} step={1} unit={currency}/>
+      <p className="micro">{tx(lang, 'A small job is charged at least this much. 0 means no minimum.', 'العمل الصغير يُحسب بهذا السعر على الأقل. القيمة 0 تعني بلا حد أدنى.')}</p>
     </Section>
     <div className="control-action"><ErrorNote error={result.error} lang={lang}/></div>
   </aside>
@@ -76,9 +84,10 @@ export function QuoteWorkspace(props: Props) {
         <div><span>{tx(lang, 'Material', 'الخامة')} <small dir="ltr">{o.sheets} × {o.sheetPrice}</small></span><b dir="ltr">{q ? money(q.material) : '—'}</b></div>
         <div><span>{tx(lang, 'Machine', 'الماكينة')} <small dir="ltr">{time}{timed && drawing ? ` · ${filename}` : ''}</small></span><b dir="ltr">{q ? money(q.machine) : '—'}</b></div>
         <div><span>{tx(lang, 'Labour and extras', 'العمل والإضافات')}</span><b dir="ltr">{q ? money(q.labour) : '—'}</b></div>
+        {o.finishing > 0 && <div><span>{tx(lang, 'Finishing', 'التشطيب')} <small dir="ltr">{q?.copies ?? o.copies} × {o.finishing}</small></span><b dir="ltr">{q ? money(q.finishing) : '—'}</b></div>}
         <div><span>{tx(lang, 'Overhead', 'مصاريف عامة')} <small dir="ltr">{o.overhead}%</small></span><b dir="ltr">{q ? money(q.overhead) : '—'}</b></div>
         <div><span>{tx(lang, 'Cost to you', 'التكلفة عليك')}</span><b dir="ltr">{q ? money(q.cost) : '—'}</b></div>
-        <div><span>{tx(lang, 'Profit', 'الربح')} <small dir="ltr">{o.profit}%</small></span><b dir="ltr">{q ? money(q.profit) : '—'}</b></div>
+        <div><span>{tx(lang, 'Profit', 'الربح')} <small dir="ltr">{q?.minimumApplied ? tx(lang, 'minimum price', 'الحد الأدنى') : `${o.profit}%`}</small></span><b dir="ltr">{q ? money(q.profit) : '—'}</b></div>
       </div>
       <div className="cost-formula">{o.profitMode === 'markup' ? tx(lang, '(material + machine + labour) × (1 + overhead) × (1 + profit)', '(الخامة + الماكينة + العمل) × (١ + المصاريف) × (١ + الربح)') : tx(lang, '(material + machine + labour) × (1 + overhead) ÷ (1 − profit)', '(الخامة + الماكينة + العمل) × (١ + المصاريف) ÷ (١ − الربح)')}</div>
       <pre className="quote-message" dir="auto">{message}</pre>

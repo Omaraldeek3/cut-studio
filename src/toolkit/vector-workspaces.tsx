@@ -1,17 +1,18 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Drawing, NestResult, Shape } from './types';
-import { MAX_NEST_PIECES, OUTLINE_NEST_MAX, artworkBounds, bounds, kerfDrawing, partsForNesting, repairDrawing, repeatDrawing, type RepairResult } from './geometry';
+import { MAX_NEST_PIECES, OUTLINE_NEST_MAX, artworkBounds, bounds, moveShape, kerfDrawing, partsForNesting, repairDrawing, repeatDrawing, type RepairResult } from './geometry';
 import { pathData } from './export';
 import { VectorInput } from './vector-input';
 import { checkDrawing, TINY_MM, type IssueKind } from './check';
+import type { NestedJob } from './quote';
 import { tx, type Language, type ToolId } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Section, Stat, Toggle, VectorPreview } from './ui';
 
 type Props={lang:Language;drawing:Drawing|null;setDrawing:(d:Drawing|null)=>void;filename:string;setFilename:(n:string)=>void;onNest:(d:Drawing)=>void};
 function PartThumb({shape}:{shape:Shape}){let b={x:0,y:0,width:1,height:1};try{b=bounds(shape);}catch{}const pad=Math.max(b.width,b.height)*0.06||1;
  return <svg className="part-thumb" viewBox={`${b.x-pad} ${b.y-pad} ${b.width+2*pad} ${b.height+2*pad}`} aria-hidden="true"><path d={pathData(shape)} fillRule="evenodd"/></svg>;}
-export function NestWorkspace(props:Props){
+export function NestWorkspace(props:Props&{onQuote?:(job:NestedJob)=>void}){
  const {lang}=props;
  // Engravings and holes drawn as their own elements travel with the part they lie on.
  const parts=useMemo(()=>props.drawing?partsForNesting(props.drawing):null,[props.drawing]),drawing=parts&&parts.drawing.shapes.length?parts.drawing:null;
@@ -43,7 +44,7 @@ export function NestWorkspace(props:Props){
  <div className="stats-row"><Stat label={tx(lang,'Pieces placed','القطع المرتبة')} value={result?result.sheets.flat().length:'—'} unit={result?` / ${result.total}`:undefined}/><Stat label={tx(lang,'Sheets needed','الألواح المطلوبة')} value={result?result.sheets.length:'—'}/><Stat label={tx(lang,'Material utilization','استغلال الخامة')} value={result?area.toFixed(1):'—'} unit="%"/><Stat label={tx(lang,'Unused material','الخامة غير المستخدمة')} value={result?(100-area).toFixed(1):'—'} unit="%"/></div>
  {result?.unplaced.length?<ErrorNote error={`${result.unplaced.length} ${tx(lang,'parts not placed (too large or time limit). They are not included in the export:','قطع لم تُرتّب بسبب المقاس أو حد الوقت، ولن تُصدّر:')} ${result.unplaced.slice(0,12).join(', ')}`} lang={lang}/>:null}
  <div className="tip-card"><span className="tip-mark">i</span><p>{result?.byBounds?tx(lang,`This job has more than ${OUTLINE_NEST_MAX} pieces, so each was first placed by its bounding rectangle, then pressed up and left along its outline, and pieces from later sheets were moved into the room this freed. For the tightest packing of irregular shapes, arrange up to ${OUTLINE_NEST_MAX} pieces at a time. `,`هذا العمل فيه أكثر من ${OUTLINE_NEST_MAX} قطعة، فرُتّبت كل قطعة أولاً حسب المستطيل المحيط بها، ثم دُفعت للأعلى ولليسار حسب حدودها، ونُقلت قطع من الألواح التالية إلى المساحة التي تحررت. لأضيق ترتيب للأشكال غير المنتظمة رتّب حتى ${OUTLINE_NEST_MAX} قطعة في المرة. `):''}{result?.outlineTolerance?tx(lang,`Detailed outlines were simplified by ${result.outlineTolerance} mm for arranging only, and spacing was widened by ${(2*result.outlineTolerance).toFixed(2)} mm to compensate. Exported parts keep every original detail. `,`بُسّطت الحدود المفصلة بمقدار ${result.outlineTolerance} مم للترتيب فقط، وزيد التباعد ${(2*result.outlineTolerance).toFixed(2)} مم للتعويض. القطع المصدّرة تحتفظ بكل التفاصيل الأصلية. `):''}{tx(lang,'A little space goes a long way. The layout respects your spacing and adds 0.2 mm between parts for curve approximation. This is a heuristic arrangement, not a guarantee of the smallest possible layout.','مساحة صغيرة تصنع فرقاً. يراعي الترتيب التباعد ويضيف ٠٫٢ مم بين القطع لتعويض تقريب المنحنيات. النتيجة ترتيب تقديري ولا تضمن أصغر مساحة ممكنة.')}</p></div>
- </div></div><Exports drawing={output} disabled={busy} name={`nested-sheet-${sheet+1}`} lang={lang}/></>;
+ </div></div><Exports drawing={output} disabled={busy} name={`nested-sheet-${sheet+1}`} lang={lang} extra={result&&props.onQuote&&<button className="text-button" onClick={()=>props.onQuote!({sheets:result.sheets.length,sheetWidth:width,sheetHeight:height,pieces:result.sheets.flat().length,drawing:{width,height:height*result.sheets.length,shapes:result.sheets.flatMap((parts,i)=>parts.map(part=>({...moveShape(part,0,i*height),id:`${part.id}-sheet${i+1}`})))}})}>{tx(lang,'Price this job','سعّر هذا العمل')} ↗</button>}/></>;
 }
 /** Each kind of problem: its name, and how to fix it. */
 const ISSUE_TEXT:Record<IssueKind,[string,string,string,string]>={

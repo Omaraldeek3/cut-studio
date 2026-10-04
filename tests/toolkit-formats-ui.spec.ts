@@ -105,3 +105,17 @@ test('the file check lists problems and zooms to each one',async({page})=>{
  // An eighth of the 100 mm artboard, centred on the open path's start at (70, 70).
  await expect(page.locator('.vector-paper')).toHaveAttribute('viewBox','63.75 63.75 12.5 12.5');
 });
+test('a nesting result is priced with its sheets and pieces',async({page})=>{
+ await page.goto('/en/nesting');
+ await page.getByLabel('Quantity of each part').fill('2');
+ await page.getByRole('button',{name:'Arrange parts',exact:true}).click();await expect(page.getByText('Layout ready',{exact:true})).toBeVisible();
+ const pieces=await page.locator('.stats-row .stat').first().locator('strong').innerText();
+ await page.getByRole('button',{name:/^Price this job/}).click();
+ await expect(page).toHaveURL(/job-quote/);
+ const placed=pieces.split('/')[0].trim();
+ await expect(page.locator('.from-nesting')).toContainText(`${placed} pieces`);
+ await expect(page.getByLabel('Quantity',{exact:true})).toHaveValue(placed);
+ await expect(page.getByRole('button',{name:'The whole order',exact:true})).toHaveAttribute('aria-pressed','true');
+ await page.getByLabel('Minimum price').fill('100000');
+ await expect(page.getByTestId('quote-total')).toHaveText('100000.00');
+});

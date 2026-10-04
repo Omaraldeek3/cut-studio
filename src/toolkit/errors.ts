@@ -22,7 +22,7 @@ const FIELDS: Record<string, string> = {
   'Second gear teeth': 'أسنان الترس الثاني', 'Sheet height': 'ارتفاع اللوح', 'Sheet price': 'سعر اللوح', 'Sheet width': 'عرض اللوح', Sheets: 'الألواح',
   'Simplify tolerance': 'انحراف التبسيط', 'Slit length': 'طول الشق', Slots: 'الفتحات', Smoothing: 'التنعيم', Spacing: 'التباعد',
   'Square size': 'مقاس المربع', Step: 'الخطوة', 'Tab size': 'مقاس اللسان', 'Text height': 'ارتفاع النص', Threshold: 'العتبة',
-  'Travel allowance': 'زمن التنقل', Wall: 'الجدار', Width: 'العرض', 'Image width': 'عرض الصورة', 'Image height': 'ارتفاع الصورة',
+  'Travel allowance': 'زمن التنقل', Finishing: 'التشطيب', 'Minimum price': 'الحد الأدنى للسعر', Wall: 'الجدار', Width: 'العرض', 'Image width': 'عرض الصورة', 'Image height': 'ارتفاع الصورة',
 };
 const field = (name: string) => FIELDS[name] ?? name;
 

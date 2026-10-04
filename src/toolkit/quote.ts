@@ -19,14 +19,21 @@ export type QuoteOptions = {
   minutes: number;
   /** What an hour on the machine costs. */
   rate: number;
-  /** Labour and extras for the whole job (design, cleaning, packing). */
+  /** Labour and extras for the whole job (design, setup, installation). */
   labour: number;
+  /** Finishing for each piece: sanding, painting, assembly. */
+  finishing: number;
   overhead: number; profit: number;
+  /** The least the job is charged, whatever it costs. */
+  minimum: number;
 };
+
+/** A nesting result handed to the quote: what it used, and the parts as arranged (for timing). */
+export type NestedJob = { sheets: number; sheetWidth: number; sheetHeight: number; pieces: number; drawing: Drawing };
 
 export const defaultQuote: QuoteOptions = {
   copies: 10, artwork: 'piece', profitMode: 'markup', sheetPrice: 45, sheets: 1, cutSpeed: 15, engraveSpeed: 120, pierce: 0.3, travel: 15,
-  minutes: 20, rate: 30, labour: 20, overhead: 10, profit: 30,
+  minutes: 20, rate: 30, labour: 20, finishing: 0, overhead: 10, profit: 30, minimum: 0,
 };
 
 function check(value: number, min: number, max: number, name: string) {
@@ -37,18 +44,22 @@ export function quote(d: Drawing | null, o: QuoteOptions) {
   check(o.copies, 1, 100000, 'Quantity'); check(o.sheetPrice, 0, 1e7, 'Sheet price'); check(o.sheets, 0, 10000, 'Sheets');
   check(o.minutes, 0, 1e6, 'Machine minutes'); check(o.rate, 0, 1e6, 'Machine rate'); check(o.labour, 0, 1e7, 'Labour');
   check(o.overhead, 0, 1000, 'Overhead'); check(o.profit, 0, o.profitMode === 'margin' ? 95 : 1000, 'Profit');
+  check(o.finishing, 0, 1e6, 'Finishing'); check(o.minimum, 0, 1e8, 'Minimum price');
   const copies = Math.round(o.copies);
   const job = d ? jobEstimate(d, { cutSpeed: o.cutSpeed, engraveSpeed: o.engraveSpeed, pierce: o.pierce, travel: o.travel, copies: o.artwork === 'order' ? 1 : copies, rate: o.rate }) : null;
   const seconds = job ? job.seconds : o.minutes * 60;
   const material = o.sheetPrice * o.sheets;
   const machine = (seconds / 3600) * o.rate;
-  const base = material + machine + o.labour;
+  const finishing = o.finishing * copies;
+  const base = material + machine + o.labour + finishing;
   const overhead = (base * o.overhead) / 100;
   const cost = base + overhead;
   // A 30% markup adds 30% of the cost; a 30% margin leaves 30% of the price as profit.
-  const total = o.profitMode === 'margin' ? cost / (1 - o.profit / 100) : cost * (1 + o.profit / 100);
+  const priced = o.profitMode === 'margin' ? cost / (1 - o.profit / 100) : cost * (1 + o.profit / 100);
+  // A small job is charged the minimum; the difference is profit.
+  const minimumApplied = o.minimum > priced, total = Math.max(priced, o.minimum);
   const profit = total - cost;
-  return { copies, job, seconds, material, machine, labour: o.labour, overhead, cost, profit, total, perPiece: total / copies };
+  return { copies, job, seconds, material, machine, labour: o.labour, finishing, overhead, cost, profit, total, minimumApplied, perPiece: total / copies };
 }
 
 export type Quote = ReturnType<typeof quote>;

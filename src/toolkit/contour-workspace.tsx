@@ -192,7 +192,7 @@ export function ContourWorkspace(props: Props) {
           {mode === 'vector' && <Toggle label={tx(lang, 'Keep the original shapes', 'احتفظ بالأشكال الأصلية')} value={original} onChange={setOriginal} />}
           <Range label={tx(lang, 'Smoothing', 'النعومة')} value={smoothing} min={0} max={100} onChange={setSmoothing} />
         </Section>
-        <div className="control-action"><ErrorNote error={loadError || built.error} /></div>
+        <div className="control-action"><ErrorNote error={loadError || built.error} lang={lang} /></div>
       </aside>
       <div className="canvas-column">
         <div className="canvas-toolbar">

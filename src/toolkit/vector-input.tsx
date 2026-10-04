@@ -74,6 +74,6 @@ export function VectorInput({lang,drawing,setDrawing,filename,setFilename}:Props
   </details>
   {pages.length>1&&<label className="field"><span>{tx(lang,'CDR page','صفحة CDR')} ({pages.length})</span><select aria-label={tx(lang,'CDR page','صفحة CDR')} value={page} disabled={busy} onChange={e=>void choosePage(+e.target.value)}>{pages.map((_,i)=><option key={i} value={i}>{tx(lang,'Page','صفحة')} {i+1}</option>)}</select><small className="micro">{tx(lang,'Only the selected page is imported.','تُستورد الصفحة المحددة فقط.')}</small></label>}
   <div className="file-chip"><span className="file-symbol">{format}</span><div><strong>{filename}</strong><small>{drawing?`${drawing.shapes.length} ${tx(lang,'parts loaded','قطع محملة')}`:tx(lang,'No artwork loaded','لم يُحمّل تصميم')}</small></div></div>
-  <button className="text-button" onClick={reset}>{busy?tx(lang,'Cancel and use sample','إلغاء واستخدام العينة'):tx(lang,'Use sample artwork','استخدم التصميم التجريبي')}</button>{notice&&<p role="status" className="micro">{notice}</p>}<ErrorNote error={error}/>
+  <button className="text-button" onClick={reset}>{busy?tx(lang,'Cancel and use sample','إلغاء واستخدام العينة'):tx(lang,'Use sample artwork','استخدم التصميم التجريبي')}</button>{notice&&<p role="status" className="micro">{notice}</p>}<ErrorNote error={error} lang={lang}/>
  </Section>;
 }

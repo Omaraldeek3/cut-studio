@@ -74,7 +74,7 @@ export function BoxWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
       <div className="field-pair"><NumberField label={tx(lang, 'Corner radius', 'تدوير الزوايا')} value={options.cornerRadius} onChange={set('cornerRadius')} max={100} step={0.5} unit="mm"/><NumberField label={tx(lang, 'CNC dogbone', 'تفريغ CNC')} value={options.dogbone} onChange={set('dogbone')} max={5} step={0.1} unit="mm"/></div>
       <p className="micro">{tx(lang, 'Corners are rounded only where no joint meets them (lids, drawer face). Dogbone is the router bit radius; leave 0 for laser.', 'تُدوّر الزوايا الحرة فقط (الأغطية وواجهة الدرج). التفريغ هو نصف قطر ريشة الراوتر؛ اتركه ٠ لليزر.')}</p>
     </Section>
-    <div className="control-action"><ErrorNote error={error}/></div>
+    <div className="control-action"><ErrorNote error={error} lang={lang}/></div>
   </aside>
   <div className="canvas-column">
     <div className="canvas-toolbar"><div className="sheet-tabs view-tabs" role="tablist">

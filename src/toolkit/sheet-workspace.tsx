@@ -258,7 +258,7 @@ export function SheetWorkspace({ lang }: { lang: Language }) {
         </Section>
         <div className="control-action">
           <button className="button primary wide" disabled={!design || !plan?.placements.length || busy} onClick={() => void savePdf()}>{busy ? tx(lang, 'Preparing…', 'جارٍ التجهيز…') : tx(lang, 'Save the sheet (PDF)', 'احفظ الورقة (PDF)')}<Icon name="download" size={18} /></button>
-          <ErrorNote error={error || layout.problem} />
+          <ErrorNote error={error || layout.problem} lang={lang} />
         </div>
       </aside>
       <div className="canvas-column">

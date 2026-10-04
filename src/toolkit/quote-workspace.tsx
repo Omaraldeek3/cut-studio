@@ -60,7 +60,7 @@ export function QuoteWorkspace(props: Props) {
       <NumberField label={tx(lang, 'Labour and extras for the job', 'أجرة العمل والإضافات للعمل كله')} value={o.labour} onChange={set('labour')} max={1e7} step={0.5} unit={currency}/>
       <div className="field-pair"><NumberField label={tx(lang, 'Overhead', 'مصاريف عامة')} value={o.overhead} onChange={set('overhead')} max={1000} unit="%"/><NumberField label={tx(lang, 'Profit', 'الربح')} value={o.profit} onChange={set('profit')} max={1000} unit="%"/></div>
     </Section>
-    <div className="control-action"><ErrorNote error={result.error}/></div>
+    <div className="control-action"><ErrorNote error={result.error} lang={lang}/></div>
   </aside>
   <div className="canvas-column">
     <div className="cost-card">

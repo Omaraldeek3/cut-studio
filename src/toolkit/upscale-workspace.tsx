@@ -279,7 +279,7 @@ export function UpscaleWorkspace({ lang }: { lang: Language }) {
           <button className="button primary wide" disabled={!source || running || !validScale || tooBig} onClick={start}>{running ? tx(lang, 'Enlarging…', 'جارٍ التكبير…') : tx(lang, 'Enlarge and save', 'كبّر واحفظ')}<Icon name="arrow" size={18} /></button>
           {running && <button className="text-button" onClick={cancel}>{tx(lang, 'Cancel', 'إلغاء')}</button>}
           {tooBig && <p className="micro">{tx(lang, 'The result would pass 65,535 px on a side. Lower the factor.', 'سيتجاوز الناتج ٦٥٥٣٥ بكسل في أحد جانبيه. خفّض المعامل.')}</p>}
-          <ErrorNote error={error} />
+          <ErrorNote error={error} lang={lang} />
         </div>
       </aside>
 

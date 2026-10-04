@@ -47,7 +47,7 @@ function Frame({ lang, built, name, caption, children, stats, tip, onNest, below
   const nest = onNest && <button className="button secondary" disabled={!drawing} onClick={() => { if (drawing) onNest(drawing); }}><Icon name="nest" size={16}/>{tx(lang, 'Arrange on sheet', 'ترتيب على اللوح')}</button>;
   return <>
     <div className="workspace">
-      <aside className="controls">{children}<div className="control-action"><ErrorNote error={error}/></div></aside>
+      <aside className="controls">{children}<div className="control-action"><ErrorNote error={error} lang={lang}/></div></aside>
       <div className="canvas-column">
         <div className="canvas-toolbar">
           {tabs ?? <span className={`status-pill ${drawing ? 'ready' : ''}`}><i/>{drawing ? tx(lang, 'Ready to cut', 'جاهز للقص') : tx(lang, 'Check the settings', 'راجع الإعدادات')}</span>}
@@ -131,7 +131,7 @@ export function GearWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dr
       {pair && <Stat label={tx(lang, 'Centre distance', 'المسافة بين المركزين')} value={centreDistance(o.module, o.teeth, teeth2).toFixed(2)} unit="mm"/>}
       {pair && <Stat label={tx(lang, 'Ratio', 'نسبة التخفيض')} value={`1 : ${(Math.round(teeth2) / Math.round(o.teeth)).toFixed(2)}`}/>}
     </>}
-    below={undercut ? <ErrorNote error={tx(lang, `Gears with fewer than ${minTeeth(o.pressure)} teeth at ${o.pressure}° undercut and may jam. Use more teeth or a larger pressure angle.`, `التروس بأقل من ${minTeeth(o.pressure)} سناً بزاوية ${o.pressure}° تتآكل قاعدة أسنانها وقد تعلق. استخدم أسناناً أكثر أو زاوية ضغط أكبر.`)}/> : null}
+    below={undercut ? <ErrorNote error={tx(lang, `Gears with fewer than ${minTeeth(o.pressure)} teeth at ${o.pressure}° undercut and may jam. Use more teeth or a larger pressure angle.`, `التروس بأقل من ${minTeeth(o.pressure)} سناً بزاوية ${o.pressure}° تتآكل قاعدة أسنانها وقد تعلق. استخدم أسناناً أكثر أو زاوية ضغط أكبر.`)} lang={lang}/> : null}
     tip={pair
       ? tx(lang, 'The two gears are laid out in mesh: drill the axle holes the centre distance apart. Cut a pair first and check how freely they turn; add a little clearance for a looser fit.', 'الترسان مرسومان متعشّقين: ضع ثقبي المحورين على المسافة بين المركزين. اقطع زوجاً أولاً وتأكد من سهولة الدوران؛ زد الخلوص قليلاً لتعشيق أرخى.')
       : tx(lang, 'Two gears mesh when they share the same module and pressure angle. Turn on the second gear to lay out a meshing pair.', 'يتعشّق ترسان إذا تساوى الموديول وزاوية الضغط. فعّل الترس الثاني لرسم زوج متعشّق.')}>
@@ -319,7 +319,7 @@ export function DpiWorkspace({ lang }: { lang: Language }) {
     <Section title={tx(lang, 'Image in pixels', 'الصورة بالبكسل')} number="03">
       <div className="field-pair"><NumberField label={tx(lang, 'Width', 'العرض')} value={pw} onChange={setPw} min={1} max={100000} unit="px"/><NumberField label={tx(lang, 'Height', 'الارتفاع')} value={ph} onChange={setPh} min={1} max={100000} unit="px"/></div>
     </Section>
-    <div className="control-action"><ErrorNote error={forward.e || back.e}/></div>
+    <div className="control-action"><ErrorNote error={forward.e || back.e} lang={lang}/></div>
   </aside>
   <div className="canvas-column">
     <div className="cost-card">

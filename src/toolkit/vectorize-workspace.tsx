@@ -270,7 +270,7 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
           <NumberField label={tx(lang, 'Width', 'العرض')} value={width} onChange={setWidth} min={1} max={20000} step={1} unit="mm" />
           <p className="micro" dir="ltr">{validWidth ? `${width} × ${heightMm.toFixed(1)} mm` : '—'}</p>
         </Section>
-        <div className="control-action"><ErrorNote error={error} /></div>
+        <div className="control-action"><ErrorNote error={error} lang={lang} /></div>
       </aside>
 
       <div className="canvas-column">

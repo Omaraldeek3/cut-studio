@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { Drawing } from './types';
 import type { Language, ToolId } from './copy';
 import { tx } from './copy';
+import { localizeError } from './errors';
 import { download, pathData, toDxf, toSvg } from './export';
 
 export function Icon({name,size=20}:{name:ToolId|'arrow'|'upload'|'check'|'grid'|'download'|'search'|'chevron';size?:number}){
@@ -14,7 +15,7 @@ export function NumberField({label,value,onChange,min=0,max=3000,step=1,unit,opt
 }
 export function Toggle({label,value,onChange}:{label:string;value:boolean;onChange:(b:boolean)=>void}){return <label className="toggle"><span>{label}</span><input type="checkbox" checked={value} onChange={e=>onChange(e.target.checked)}/><span className="switch" aria-hidden="true"/></label>;}
 export function Range({label,value,onChange,min,max,step=1}:{label:string;value:number;onChange:(n:number)=>void;min:number;max:number;step?:number}){return <label className="range"><span>{label}<b>{value}</b></span><input aria-label={label} type="range" value={value} min={min} max={max} step={step} onChange={e=>onChange(+e.target.value)}/></label>;}
-export function ErrorNote({error}:{error:string}){return error?<div role="alert" className="error-note">{error}</div>:null;}
+export function ErrorNote({error,lang}:{error:string;lang:Language}){return error?<div role="alert" className="error-note">{localizeError(error,lang)}</div>:null;}
 export function Section({title,children,number}:{title:string;children:React.ReactNode;number?:string}){return <section className="control-section"><h3>{number&&<span>{number}</span>}{title}</h3>{children}</section>;}
 export function Stat({label,value,unit}:{label:string;value:React.ReactNode;unit?:string}){return <div className="stat"><span>{label}</span><strong>{value}<small>{unit}</small></strong></div>;}
 type View={x:number;y:number;w:number;h:number};

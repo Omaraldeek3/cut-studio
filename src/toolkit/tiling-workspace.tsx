@@ -181,7 +181,7 @@ export function TilingWorkspace({ lang }: { lang: Language }) {
         </Section>
         <div className="control-action">
           <button className="button primary wide" disabled={!plan || !!busy} onClick={() => void saveAll()}>{busy === 'all' ? tx(lang, 'Preparing panels…', 'جارٍ تجهيز الألواح…') : tx(lang, 'Save all panels (ZIP)', 'احفظ كل الألواح (ZIP)')}<Icon name="download" size={18} /></button>
-          <ErrorNote error={error || result.problem} />
+          <ErrorNote error={error || result.problem} lang={lang} />
         </div>
       </aside>
 

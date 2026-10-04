@@ -205,7 +205,7 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
             </label>
           </>}
         </Section>
-        <div className="control-action"><ErrorNote error={error || result.problem} /></div>
+        <div className="control-action"><ErrorNote error={error || result.problem} lang={lang} /></div>
       </aside>
       <div className="canvas-column">
         <div className="canvas-toolbar">

@@ -166,7 +166,7 @@ export function EngraveWorkspace({ lang }: { lang: Language }) {
           <Toggle label={tx(lang, 'Invert (engrave the light parts)', 'اعكس (احفر الأجزاء الفاتحة)')} value={options.invert} onChange={set('invert')} />
           <Toggle label={tx(lang, 'Mirror (engrave from the back)', 'مرآة (للحفر من الخلف)')} value={options.mirror} onChange={set('mirror')} />
         </Section>
-        <div className="control-action"><ErrorNote error={error} /></div>
+        <div className="control-action"><ErrorNote error={error} lang={lang} /></div>
       </aside>
       <div className="canvas-column">
         <div className="canvas-toolbar">

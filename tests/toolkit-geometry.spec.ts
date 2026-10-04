@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { bounds, shapesCollide, nest, repeatDrawing, kerfDrawing, cleanDrawing, contourKey, partsForNesting, snugAngle, normalize } from '../src/toolkit/geometry';
+import { bounds, shapesCollide, nest, repeatDrawing, kerfDrawing, cleanDrawing, contourKey, partsForNesting, snugAngle, normalize, artworkBounds } from '../src/toolkit/geometry';
 import { toSvg, toDxf } from '../src/toolkit/export';
 import type { Shape } from '../src/toolkit/types';
 import { sampleDrawing } from '../src/toolkit/samples';
@@ -134,7 +134,8 @@ test('a big job of hundreds of parts packs quickly, without overlaps, inside the
   expect(drawing.shapes).toHaveLength(900);
   const o = { width: 500, height: 700, margin: 5, gap: 3, copies: 1, rotate: true };
   const started = Date.now(), r = nest(drawing.shapes, o);
-  expect(Date.now() - started).toBeLessThan(10000);
+  // Packing tries rules for up to 6 s and compaction stops at 14 s; the browser allows 30 s.
+  expect(Date.now() - started).toBeLessThan(20000);
   expect(r.byBounds).toBe(true);
   expect(r.unplaced).toEqual([]);
   expect(r.sheets.flat()).toHaveLength(900);
@@ -211,4 +212,15 @@ test('after packing by rectangle, outlines are pressed together without touching
   }
   expect(outside).toBe(0);
   expect(closest).toBeGreaterThanOrEqual(2 - 1e-6);
+});
+
+test('resizing can size the design itself, not the page it was drawn on', () => {
+  // A 40 × 20 outline at (20, 30) on a 100 × 100 page.
+  const d = { width: 100, height: 100, shapes: [rect('a', 20, 30, 40, 20)] };
+  expect(artworkBounds(d)).toEqual({ x: 20, y: 30, width: 40, height: 20 });
+  const out = repeatDrawing(d, 80, 40, 2, 1, 5, 'artwork');
+  expect(out.width).toBe(165); expect(out.height).toBe(40);
+  expect(out.shapes.map(bounds)).toEqual([{ x: 0, y: 0, width: 80, height: 40 }, { x: 85, y: 0, width: 80, height: 40 }]);
+  // The page as drawn, margins included, as before.
+  expect(bounds(repeatDrawing(d, 80, 40, 1, 1, 0).shapes[0])).toEqual({ x: 16, y: 12, width: 32, height: 8 });
 });

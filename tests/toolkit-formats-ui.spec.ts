@@ -88,3 +88,10 @@ test('any-angle turning is offered with rotation and packs the job',async({page}
  await expect(page.locator('.stats-row')).toContainText('30 / 30');
  await page.getByText('Allow 90° rotations',{exact:true}).click();await expect(page.getByText('Any angle',{exact:true})).toHaveCount(0);
 });
+test('occasional makers and calculators sit together under More tools',async({page})=>{
+ await page.goto('/ar/vector-cleanup');
+ await expect(page.getByText('أدوات إضافية',{exact:true}).first()).toBeVisible();
+ await page.goto('/en/vector-cleanup');
+ const section=page.locator('nav, aside').filter({hasText:'More tools'}).first();
+ for(const name of ['Gear maker','Jigsaw puzzle','Ruler maker']) await expect(section.getByRole('link',{name,exact:true})).toBeVisible();
+});

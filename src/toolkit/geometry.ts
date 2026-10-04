@@ -522,11 +522,23 @@ export function nest(allShapes:Shape[],o:NestOptions):NestResult {
   const sheets=chosen.sheets.map(sheet=>sheet.map(p=>({...moveShape(normalize(kinds[p.kind].shape,p.angle),p.x,p.y),id:p.id,name:p.name})));
   return {sheets,unplaced:chosen.unplaced,total:instances.length,area:chosen.area,elapsed:Date.now()-start,outlineTolerance:tolerance};
 }
-export function repeatDrawing(d:Drawing,width:number,height:number,columns:number,rows:number,gap:number):Drawing{
+/** The box the artwork itself fills, without the page around it. */
+export function artworkBounds(d:Drawing):Bounds{
+  const boxes=d.shapes.filter(s=>s.contours.some(c=>c.points.length)).map(bounds);
+  if(!boxes.length)return {x:0,y:0,width:d.width,height:d.height};
+  const x=Math.min(...boxes.map(b=>b.x)),y=Math.min(...boxes.map(b=>b.y));
+  return {x,y,width:Math.max(...boxes.map(b=>b.x+b.width))-x,height:Math.max(...boxes.map(b=>b.y+b.height))-y};
+}
+/** Repeats the artwork in a grid. `fit` says what width × height sizes: the
+ *  page as drawn, margins included, or the artwork's own outlines, in which
+ *  case the spacing is between outlines too. */
+export function repeatDrawing(d:Drawing,width:number,height:number,columns:number,rows:number,gap:number,fit:'page'|'artwork'='page'):Drawing{
   finite(width,0.1,3000,'Width');finite(height,0.1,3000,'Height');finite(columns,1,100,'Columns');finite(rows,1,100,'Rows');finite(gap,0,100,'Spacing');
   if(!Number.isInteger(columns)||!Number.isInteger(rows)||columns*rows*d.shapes.length>500)throw new Error('Use whole-number rows and columns, up to 500 repeated shapes.');
   const shapes:Shape[]=[];
-  for(let r=0;r<rows;r++)for(let c=0;c<columns;c++)for(const s of d.shapes)shapes.push({...mapShape(s,p=>({x:p.x*width/d.width+c*(width+gap),y:p.y*height/d.height+r*(height+gap)})),id:`${s.id}-${r}-${c}`});
+  const box=fit==='artwork'?artworkBounds(d):{x:0,y:0,width:d.width,height:d.height};
+  if(!(box.width>0)||!(box.height>0))throw new Error('The artwork has no width or height to resize.');
+  for(let r=0;r<rows;r++)for(let c=0;c<columns;c++)for(const s of d.shapes)shapes.push({...mapShape(s,p=>({x:(p.x-box.x)*width/box.width+c*(width+gap),y:(p.y-box.y)*height/box.height+r*(height+gap)})),id:`${s.id}-${r}-${c}`});
   return {width:width*columns+gap*(columns-1),height:height*rows+gap*(rows-1),shapes};
 }
 export function kerfDrawing(thickness:number,step:number,count:number):Drawing & {labels:{x:number;y:number;value:string}[]}{

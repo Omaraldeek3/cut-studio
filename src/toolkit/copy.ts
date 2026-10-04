@@ -1,12 +1,14 @@
 export type Language='en'|'ar';
-export const toolIds=['trace','upscale','lettering','contour','clean','repeat','nest','box','gear','hinge','puzzle','tag','pattern','engrave','testcard','kerf','ruler','tiles','sheet','dpi','quote'] as const;
+export const toolIds=['trace','upscale','lettering','contour','clean','repeat','nest','box','hinge','tag','pattern','engrave','testcard','kerf','tiles','sheet','quote','gear','puzzle','ruler','dpi'] as const;
 export type ToolId=typeof toolIds[number];
 /** The tools grouped the way a workshop thinks about them, in toolIds order. */
 export const groups:{id:string;title:[string,string];tools:ToolId[]}[]=[
   {id:'artwork',title:['Artwork','التصميم'],tools:['trace','upscale','lettering','contour','clean','repeat']},
-  {id:'laser',title:['Laser & CNC','الليزر والقص'],tools:['nest','box','gear','hinge','puzzle','tag','pattern','engrave','testcard','kerf','ruler']},
-  {id:'print',title:['Print','الطباعة'],tools:['tiles','sheet','dpi']},
+  {id:'laser',title:['Laser & CNC','الليزر والقص'],tools:['nest','box','hinge','tag','pattern','engrave','testcard','kerf']},
+  {id:'print',title:['Print','الطباعة'],tools:['tiles','sheet']},
   {id:'business',title:['Business','الأعمال'],tools:['quote']},
+  // Occasional makers and calculators; engraving prep and the upscaler already set DPI themselves.
+  {id:'extras',title:['More tools','أدوات إضافية'],tools:['gear','puzzle','ruler','dpi']},
 ];
 export const groupOf=(id:ToolId)=>groups.find(g=>g.tools.includes(id))!;
 
@@ -57,7 +59,7 @@ export const descriptions:Record<ToolId,[string,string]>={
   kerf:['Find the fit that feels right. Generate a slotted coupon for your material.','أنشئ عينة بفتحات مختلفة لاختيار المقاس الأنسب لتعشيق الخامة.'],
   engrave:['Prepare photos for CO2 and fibre engraving at the real line resolution, with material presets and eight dithering methods.','جهّز الصور للحفر بليزر CO2 والفايبر بدقة الأسطر الحقيقية، مع إعدادات جاهزة للخامات وثماني طرق تنقيط.'],
   box:['Design a finger-joint box to your size and material, ready to cut.','صمّم صندوقاً بتعشيق الأسنان بمقاسك وسماكة خامتك، جاهزاً للقص.'],
-  upscale:['Enlarge a picture up to 4× with an AI model that draws in real detail, and save it with the right DPI for a large print.','كبّر الصورة حتى ٤ أضعاف بنموذج ذكاء اصطناعي يرسم تفاصيل حقيقية، واحفظها بالدقة المناسبة للطباعة الكبيرة.'],
+  upscale:['Enlarge a picture up to 8×: an AI model adds believable detail up to 4×, and a smooth enlargement takes it further. Save it with the right DPI for a large print.','كبّر الصورة حتى ٨ أضعاف: نموذج ذكاء اصطناعي يضيف تفاصيل مقنعة حتى ٤ أضعاف، ثم يكمل تكبير ناعم ما بعدها. واحفظها بالدقة المناسبة للطباعة الكبيرة.'],
   tiles:['Split a large print into panels your printer can take, with overlap, numbers and marks for fitting.','قسّم الطباعة الكبيرة إلى ألواح بعرض طابعتك، مع تداخل وأرقام وعلامات للتركيب.'],
   contour:['Add an outline around letters, logos or stickers: a base for acrylic letters, or a cut line for print and cut.','أضف حداً حول الحروف والشعارات والستيكرات: قاعدة للحروف البارزة أو خط قص للطباعة والقص.'],
   lettering:['Type Arabic or English in any font on your computer and get joined, weldable outlines ready to cut.','اكتب بالعربية أو الإنجليزية بأي خط على جهازك واحصل على حدود متصلة جاهزة للقص.'],

@@ -186,6 +186,7 @@ const EXACT: Record<string, string> = {
   'This image could not be opened. Very large files may need to be saved as JPEG first.': 'تعذّر فتح الصورة. الملفات الكبيرة جداً قد تحتاج حفظها بصيغة JPEG أولاً.',
   'This image could not be opened.': 'تعذّر فتح الصورة.',
   'Upscaling failed.': 'تعذّر تكبير الصورة.',
+  'Bridge width must be above zero.': 'عرض الجسر يجب أن يكون أكبر من صفر.',
   'The artwork has no width or height to resize.': 'التصميم بلا عرض أو ارتفاع لتغيير مقاسه.',
   'Vectorizing failed.': 'تعذّر التحويل إلى فيكتور.',
 };

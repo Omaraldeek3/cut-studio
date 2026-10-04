@@ -7,7 +7,7 @@ import { tx, type Language } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Range, Section, Stat, Toggle, VectorPreview } from './ui';
 import { commandLoops, groupLoops, layoutText, type Align } from './lettering';
 import { builtInFonts, loadHarfBuzz, shaperFrom, WEIGHTS, type FontChoice, type LocalFont } from './fonts';
-import { unionContours } from './vector-ops';
+import { stencilContours, unionContours } from './vector-ops';
 import { circle, roundedRect } from './generators';
 import { moveShape } from './geometry';
 
@@ -17,7 +17,7 @@ import { moveShape } from './geometry';
    design) can be welded into one clean outline, so the laser or the plotter
    never cuts a line through the middle of a word. */
 
-type PlateOptions = { shape: 'rect' | 'pill'; padding: number; radius: number; holes: 0 | 2 | 4; holeSize: number; textOn: 'engrave' | 'cut' };
+type PlateOptions = { shape: 'rect' | 'pill'; padding: number; radius: number; holes: 0 | 2 | 4; holeSize: number; textOn: 'engrave' | 'cut' | 'stencil' };
 
 /** Puts a cut plate around lettered text: a door sign or a name plate.
  *  Engraved text stays on the plate as one part; cut letters become their
@@ -36,6 +36,11 @@ export function withPlate(letters: Shape[], width: number, height: number, o: Pl
   const holeContours: Contour[] = centres.map(([x, y]) => ({ closed: true, points: circle(x, y, holeR) }));
   const text = letters.map(s => moveShape(s, o.padding, o.padding));
   const plateShape: Shape = { id: 'plate', name: 'Plate', contours: [outline, ...holeContours] };
+  if (o.textOn === 'stencil') {
+    // The letters are cut out of the plate itself: the plate is the stencil.
+    plateShape.contours.push(...text.flatMap(s => s.contours));
+    return { drawing: { width: w, height: h, shapes: [plateShape] }, parts: 1 };
+  }
   if (o.textOn === 'engrave') {
     plateShape.contours.push(...text.flatMap(s => s.contours.map(c => ({ ...c, layer: 'engrave' as const }))));
     return { drawing: { width: w, height: h, shapes: [plateShape] }, parts: 1 };
@@ -65,7 +70,8 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
   const [plateRadius, setPlateRadius] = useState(6);
   const [holes, setHoles] = useState<0 | 2 | 4>(2);
   const [holeSize, setHoleSize] = useState(5);
-  const [textOn, setTextOn] = useState<'engrave' | 'cut'>('engrave');
+  const [textOn, setTextOn] = useState<'engrave' | 'cut' | 'stencil'>('engrave');
+  const [stencil, setStencil] = useState(false), [bridge, setBridge] = useState(1.5);
   const [hb, setHb] = useState<typeof HB | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
@@ -105,7 +111,9 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
     } catch { return null; }
   }, [hb, choice, text, lineHeight, wordSpacing, letterSpacing, align]);
 
-  const result = useMemo((): { drawing: Drawing | null; parts: number; problem: string } => {
+  // A stencil plate always needs bridges; loose letters get them when asked.
+  const bridged = stencil || (plate !== 'none' && textOn === 'stencil');
+  const result = useMemo((): { drawing: Drawing | null; parts: number; problem: string; bridges?: number } => {
     if (!layout) return { drawing: null, parts: 0, problem: '' };
     try {
       const exact = commandLoops(layout.glyphs, 0.4);
@@ -120,14 +128,16 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
       const fine = commandLoops(layout.glyphs, 0.005 / k).map(loop => loop.map(toMm));
       // Welding unions the outlines as vectors and refits them within 0.01 mm;
       // unwelded outlines keep the font's own, and export fits them.
-      const contours: Contour[] = welded ? unionContours(fine) : fine.map(points => ({ closed: true, points }));
+      const stenciled = bridged ? stencilContours(fine, bridge) : null;
+      const contours: Contour[] = stenciled ? stenciled.contours : welded ? unionContours(fine) : fine.map(points => ({ closed: true, points }));
       const byLoop = new Map(contours.map(c => [c.points, c]));
       const groups = groupLoops(contours.map(c => c.points));
       const shapes: Shape[] = groups.map((group, i) => ({ id: `letter-${i}`, name: `Letter ${i + 1}`, contours: group.map(loop => byLoop.get(loop)!) }));
-      if (plate === 'none') return { drawing: { width, height, shapes }, parts: groups.length, problem: '' };
-      return { ...withPlate(shapes, width, height, { shape: plate, padding, radius: plateRadius, holes, holeSize, textOn }), problem: '' };
+      const bridges = stenciled?.bridges ?? 0;
+      if (plate === 'none') return { drawing: { width, height, shapes }, parts: groups.length, problem: '', bridges };
+      return { ...withPlate(shapes, width, height, { shape: plate, padding, radius: plateRadius, holes, holeSize, textOn }), problem: '', bridges };
     } catch (cause) { return { drawing: null, parts: 0, problem: cause instanceof Error ? cause.message : 'Lettering failed.' }; }
-  }, [layout, welded, size, fit, mirror, plate, padding, plateRadius, holes, holeSize, textOn]);
+  }, [layout, welded, size, fit, mirror, plate, padding, plateRadius, holes, holeSize, textOn, bridged, bridge]);
 
   const drawing = result.drawing;
   const name = text.trim().slice(0, 24).replace(/[\\/:*?"<>|\s]+/g, '-') || 'lettering';
@@ -179,6 +189,9 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
         <Section title={tx(lang, 'For cutting', 'للقص')} number="04">
           <Toggle label={tx(lang, 'Weld overlapping letters', 'ادمج الحروف المتداخلة')} value={welded} onChange={setWelded} />
           <Toggle label={tx(lang, 'Mirror (engrave on the back)', 'عكس (للحفر من الخلف)')} value={mirror} onChange={setMirror} />
+          <Toggle label={tx(lang, 'Stencil bridges', 'جسور الاستنسل')} value={bridged} onChange={setStencil} />
+          {bridged && <><NumberField label={tx(lang, 'Bridge width', 'عرض الجسر')} value={bridge} onChange={setBridge} min={0.3} max={20} step={0.1} unit="mm" />
+          <p className="micro">{tx(lang, 'Ties the inside of letters such as ه، ص، و and O to the sheet, so nothing falls out when the letters are cut out of it.', 'تربط داخل الحروف مثل ه وص وو وO باللوح، فلا يسقط شيء عند قص الحروف منه.')}{result.bridges ? tx(lang, ` ${result.bridges} bridges.`, ` عدد الجسور: ${result.bridges}.`) : ''}</p></>}
         </Section>
         <Section title={tx(lang, 'Sign plate', 'لوحة حول النص')} number="05">
           <div className="preset-row">{([['none', tx(lang, 'No plate', 'بدون لوحة')], ['rect', tx(lang, 'Rectangle', 'مستطيلة')], ['pill', tx(lang, 'Rounded ends', 'أطراف دائرية')]] as const).map(([id, label]) => <button key={id} className={plate === id ? 'selected' : ''} onClick={() => setPlate(id)}>{label}</button>)}</div>
@@ -198,9 +211,10 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
               {holes > 0 && <NumberField label={tx(lang, 'Hole diameter', 'قطر الثقب')} value={holeSize} onChange={setHoleSize} min={1} max={30} step={0.5} unit="mm" />}
             </div>
             <label className="field"><span>{tx(lang, 'The text', 'النص')}</span>
-              <select value={textOn} onChange={e => setTextOn(e.target.value as 'engrave' | 'cut')}>
+              <select value={textOn} onChange={e => setTextOn(e.target.value as 'engrave' | 'cut' | 'stencil')}>
                 <option value="engrave">{tx(lang, 'Engraved on the plate', 'محفور على اللوحة')}</option>
                 <option value="cut">{tx(lang, 'Cut as separate letters, with a placement guide', 'حروف مقصوصة منفصلة، مع دليل لتركيبها')}</option>
+                <option value="stencil">{tx(lang, 'Cut through the plate: a stencil, with bridges', 'مقصوصة من اللوحة: استنسل بجسور')}</option>
               </select>
             </label>
           </>}

@@ -117,3 +117,14 @@ test("every workshop tool opens without an error", async ({ page }) => {
   }
   expect(errors).toEqual([]);
 });
+
+test("Arabic lettering cuts a stencil plate with bridges", async ({ page }) => {
+  const errors = await openTool(page, "Arabic lettering");
+  await expect(page.getByText("Ready to cut", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.locator(".lt-text").fill("هو");
+  await page.getByRole("button", { name: "Rectangle", exact: true }).click();
+  await page.locator("label.field").filter({ hasText: /^The text/ }).locator("select").selectOption("stencil");
+  await expect(page.getByText(/\d+ bridges\./)).toBeVisible();
+  await expect(page.locator(".stats-row")).toContainText("1");
+  expect(errors).toEqual([]);
+});

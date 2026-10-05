@@ -287,6 +287,15 @@ html[dir=rtl] .preview-top > span { letter-spacing: 0; }
 .stat.long strong { font-size: clamp(11px, calc(160cqi / var(--chars)), 22px); }
 .stat small { margin-inline-start: 4px; font-size: 12.5px; font-weight: 550; color: var(--ink-3); }
 
+/* Moving nested parts by hand. */
+.sheet-editor-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sheet-editor-tools .micro { margin: 0; }
+.sheet-editor-paper { display: block; width: 100%; height: auto; outline: none; touch-action: none; }
+.sheet-editor-paper:focus-visible { box-shadow: 0 0 0 2px var(--accent-strong); }
+.sheet-part { fill: #d78155; fill-opacity: .85; stroke: #334038; stroke-width: .7; cursor: grab; }
+.sheet-part:active { cursor: grabbing; }
+.sheet-part.selected { stroke: #1d7fd6; stroke-width: 2; }
+.sheet-part.clash { fill: #d43c2c; }
 /* File check in Vector cleanup: one row per kind of problem, with a way to see it. */
 .file-check { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-inline-start: 3px solid #d43c2c; border-radius: var(--r2); background: var(--surface); }
 .file-check h3 { margin: 0 0 6px; font-size: 14px; font-weight: 700; }

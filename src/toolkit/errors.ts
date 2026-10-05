@@ -22,7 +22,7 @@ const FIELDS: Record<string, string> = {
   'Second gear teeth': 'أسنان الترس الثاني', 'Sheet height': 'ارتفاع اللوح', 'Sheet price': 'سعر اللوح', 'Sheet width': 'عرض اللوح', Sheets: 'الألواح',
   'Simplify tolerance': 'انحراف التبسيط', 'Slit length': 'طول الشق', Slots: 'الفتحات', Smoothing: 'التنعيم', Spacing: 'التباعد',
   'Square size': 'مقاس المربع', Step: 'الخطوة', 'Tab size': 'مقاس اللسان', 'Text height': 'ارتفاع النص', Threshold: 'العتبة',
-  'Travel allowance': 'زمن التنقل', Flutes: 'عدد الحدود', 'Plate thickness': 'سماكة اللوح', 'Plate width': 'عرض اللوح', 'Plate height': 'ارتفاع اللوح', 'Slot position': 'موضع المجرى', 'Lowest spindle speed': 'أدنى سرعة دوران', 'Highest spindle speed': 'أعلى سرعة دوران', 'Highest feed rate': 'أعلى سرعة تغذية', 'Chip load': 'سماكة الرايش', 'Bit diameter': 'قطر الريشة', Finishing: 'التشطيب', 'Minimum price': 'الحد الأدنى للسعر', Wall: 'الجدار', Width: 'العرض', 'Image width': 'عرض الصورة', 'Image height': 'ارتفاع الصورة',
+  'Travel allowance': 'زمن التنقل', Flutes: 'عدد الحدود', Rim: 'الحافة', 'Plate thickness': 'سماكة اللوح', 'Plate width': 'عرض اللوح', 'Plate height': 'ارتفاع اللوح', 'Slot position': 'موضع المجرى', 'Lowest spindle speed': 'أدنى سرعة دوران', 'Highest spindle speed': 'أعلى سرعة دوران', 'Highest feed rate': 'أعلى سرعة تغذية', 'Chip load': 'سماكة الرايش', 'Bit diameter': 'قطر الريشة', Finishing: 'التشطيب', 'Minimum price': 'الحد الأدنى للسعر', Wall: 'الجدار', Width: 'العرض', 'Image width': 'عرض الصورة', 'Image height': 'ارتفاع الصورة',
 };
 const field = (name: string) => FIELDS[name] ?? name;
 
@@ -186,6 +186,9 @@ const EXACT: Record<string, string> = {
   'This image could not be opened. Very large files may need to be saved as JPEG first.': 'تعذّر فتح الصورة. الملفات الكبيرة جداً قد تحتاج حفظها بصيغة JPEG أولاً.',
   'This image could not be opened.': 'تعذّر فتح الصورة.',
   'Upscaling failed.': 'تعذّر تكبير الصورة.',
+  'Use 5 to 12 sides.': 'استخدم من 5 إلى 12 ضلعاً.',
+  'The corners are too round for this size: lower the corner radius or widen the box.': 'الزوايا مستديرة أكثر من اللازم لهذا المقاس: قلّل نصف قطر الزوايا أو وسّع الصندوق.',
+  'The box is too small for a lid lip. Widen it.': 'الصندوق أصغر من أن يأخذ حلقة غطاء. وسّعه.',
   'Outline thickness must be between 1 and 50 mm.': 'سماكة الحد يجب أن تكون بين 1 و50 مم.',
   'Spikes must be 10 to 300 mm long and 2 to 40 mm wide.': 'الأعواد يجب أن تكون بطول 10 إلى 300 مم وعرض 2 إلى 40 مم.',
   'Use 1 to 10 layers, with the slot through 1 of them up to all.': 'استخدم من 1 إلى 10 طبقات، والمجرى في طبقة واحدة منها أو أكثر حتى كلها.',

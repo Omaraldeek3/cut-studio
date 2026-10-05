@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { defaultPolyBox, polyBoxDrawing } from '../src/toolkit/polybox';
 import { audit } from './helpers/geometry-audit';
 import * as g from '../src/toolkit/generators';
 import { buildBox } from '../src/toolkit/box';
@@ -11,6 +12,7 @@ const drawings: [string, () => Drawing][] = [
   ['gear', () => g.gearDrawing(g.defaultGear)],
   ['puzzle', () => g.puzzleDrawing(g.defaultPuzzle)],
   ['tag', () => g.tagDrawing(g.defaultTag)],
+  ...[5, 6, 8, 12].map((sides): [string, () => Drawing] => [`polygon box ${sides}`, () => polyBoxDrawing({ ...defaultPolyBox, sides })]),
   ...(['arch', 'rounded', 'square'] as const).map((plateTop): [string, () => Drawing] => [`trophy ${plateTop}`, () => g.trophyDrawing({ ...g.defaultTrophy, plateTop })]),
   ...(['hex', 'circle', 'slot', 'diamond'] as const).map((kind): [string, () => Drawing] => [`pattern-${kind}`, () => g.patternDrawing({ ...g.defaultPattern, kind })]),
   ['test card', () => g.testCardDrawing(g.defaultTestCard)],

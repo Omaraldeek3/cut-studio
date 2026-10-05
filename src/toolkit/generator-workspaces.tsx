@@ -10,6 +10,7 @@ import type { Drawing } from './types';
 import { tx, type Language } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Section, Stat, Toggle, VectorPreview } from './ui';
 import { download } from './export';
+import { defaultPolyBox, polyBoxDrawing, type PolyBoxOptions, type PolyBoxResult } from './polybox';
 import {
   defaultGear, defaultHinge, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
   centreDistance, gearDrawing, gearGeometry, gearPairDrawing, hingeDrawing, pathStats, patternDrawing, printSize, puzzleDrawing,
@@ -232,6 +233,31 @@ export function TagWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
       </div>
       <NumberField label={tx(lang, 'Largest letter height', 'أقصى ارتفاع للحروف')} value={o.textHeight} onChange={set('textHeight')} min={1.5} step={0.5} unit="mm"/>
       <p className="micro">{tx(lang, 'The text shrinks to fit the tag when it would not fit at this height.', 'يصغر النص تلقائياً ليناسب البطاقة إذا لم يتسع بهذا الارتفاع.')}</p>
+    </Section>
+  </Frame>;
+}
+
+// ——— Polygon box ———
+
+export function PolyBoxWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Drawing) => void }) {
+  const [o, set] = useOptions<PolyBoxOptions>(defaultPolyBox);
+  const built = useMemo(() => build(() => polyBoxDrawing(o)), [o]);
+  const info = built.drawing as PolyBoxResult | null;
+  const shapes: [string, string][] = [['5', tx(lang, 'Pentagon', 'خماسي')], ['6', tx(lang, 'Hexagon', 'سداسي')], ['8', tx(lang, 'Octagon', 'ثماني')], ['12', tx(lang, '12 sides', '١٢ ضلعاً')]];
+  return <Frame lang={lang} built={built} name={`polygon-box-${o.sides}-${o.width}x${o.height}`} onNest={onNest}
+    caption={tx(lang, 'Base, lid, lid lip and the wall strip', 'القاعدة والغطاء وحلقة الغطاء وشريط الجدار')}
+    stats={<><Stat label={tx(lang, 'Wall strip', 'شريط الجدار')} value={info ? info.stripLength.toFixed(0) : '—'} unit="mm"/><Stat label={tx(lang, 'Each side', 'طول الضلع')} value={info ? info.side.toFixed(1) : '—'} unit="mm"/></>}
+    tip={tx(lang, 'Bend the strip at the hinges round the base, with its tabs in the slots; the side with no slot is where the dovetails meet. Glue the lip under the lid. Plywood and MDF up to 3 mm bend best; test a hinge first.', 'اثنِ الشريط عند المفاصل حول القاعدة وأدخل ألسنته في الفتحات؛ الضلع الذي بلا فتحة هو مكان التقاء ذيل الحمامة. الصق الحلقة تحت الغطاء. الخشب المعاكس وMDF حتى ٣ مم ينثنيان أفضل؛ جرّب مفصلاً أولاً.')}>
+    <Section title={tx(lang, 'Shape and size', 'الشكل والمقاس')} number="01">
+      <Choice label={tx(lang, 'Sides', 'الأضلاع')} value={String(o.sides)} options={shapes} onChange={v => set('sides')(Number(v))}/>
+      <div className="field-pair"><NumberField label={tx(lang, 'Width across flats', 'العرض بين ضلعين متقابلين')} value={o.width} onChange={set('width')} min={40} max={1000} unit="mm"/><NumberField label={tx(lang, 'Height', 'الارتفاع')} value={o.height} onChange={set('height')} min={15} max={600} unit="mm"/></div>
+      <div className="field-pair"><NumberField label={tx(lang, 'Material thickness', 'سماكة الخامة')} value={o.thickness} onChange={set('thickness')} min={1} max={12} step={0.5} unit="mm"/><NumberField label={tx(lang, 'Corner radius', 'نصف قطر الزوايا')} value={o.radius} onChange={set('radius')} min={2} step={0.5} unit="mm"/></div>
+      <p className="micro">{tx(lang, 'The wall bends round the corners: a radius of at least four times the thickness bends without cracking.', 'الجدار ينثني حول الزوايا: نصف قطر لا يقل عن أربعة أضعاف السماكة ينثني بلا تشقق.')}</p>
+    </Section>
+    <Section title={tx(lang, 'Lid and fit', 'الغطاء والتعشيق')} number="02">
+      <Toggle label={tx(lang, 'Lift-off lid', 'غطاء يُرفع')} value={o.lid} onChange={set('lid')}/>
+      <div className="field-pair"><NumberField label={tx(lang, 'Rim past the wall', 'الحافة خارج الجدار')} value={o.rim} onChange={set('rim')} max={30} step={0.5} unit="mm"/><NumberField label={tx(lang, 'Clearance', 'الخلوص')} value={o.clearance} onChange={set('clearance')} max={1} step={0.05} unit="mm"/></div>
+      <NumberField label={tx(lang, 'Hinge line spacing', 'تباعد خطوط المفصل')} value={o.slitSpacing} onChange={set('slitSpacing')} min={0.6} max={5} step={0.1} unit="mm"/>
     </Section>
   </Frame>;
 }

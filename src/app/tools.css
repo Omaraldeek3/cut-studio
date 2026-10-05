@@ -112,6 +112,18 @@ html[dir=rtl] .sidebar nav a { font-size: 14.5px; }
 .sidebar nav a.active svg { color: var(--accent); }
 .sidebar nav a.active::before { content: ''; position: absolute; inset-inline-start: -6px; top: 8px; bottom: 8px; width: 3px; border-radius: 3px; background: var(--accent); }
 .nav-empty { margin: 8px 10px; color: var(--ink-3); font-size: 13px; }
+/* A site of its own: dashed, with the outward arrow at the end. */
+.sidebar nav a.nav-out { margin-top: 4px; border: 1px dashed var(--line-2); }
+.sidebar nav a.nav-out span { flex: 1; }
+html[dir=rtl] .sidebar nav a.nav-out svg:last-child { transform: scaleX(-1); }
+/* Under every ready-made template: the 3D models in Shakl. */
+.shakl-card { display: flex; gap: 14px; align-items: center; margin-top: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r2); background: var(--surface); }
+.shakl-card .tool-emblem { width: 44px; height: 44px; border-radius: 12px; }
+.shakl-card div { flex: 1; min-width: 0; }
+.shakl-card strong { display: block; margin-bottom: 2px; font-size: 14px; }
+.shakl-card p { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.6; }
+.shakl-card .button { flex: 0 0 auto; gap: 8px; }
+@media (max-width: 680px) { .shakl-card { flex-direction: column; align-items: stretch; } }
 
 .tool-picker { display: none; }
 .tool-picker > span { display: block; font-size: 12px; color: var(--ink-3); margin-bottom: 6px; }

@@ -88,12 +88,19 @@ test('any-angle turning is offered with rotation and packs the job',async({page}
  await expect(page.locator('.stats-row')).toContainText('30 / 30');
  await page.getByText('Allow 90° rotations',{exact:true}).click();await expect(page.getByText('Any angle',{exact:true})).toHaveCount(0);
 });
-test('occasional makers and calculators sit together under More tools',async({page})=>{
+test('the makers of one finished object sit together under Ready-made, with Shakl next to them',async({page})=>{
  await page.goto('/ar/vector-cleanup');
- await expect(page.getByText('أدوات إضافية',{exact:true}).first()).toBeVisible();
+ await expect(page.getByText('قوالب جاهزة',{exact:true}).first()).toBeVisible();
  await page.goto('/en/vector-cleanup');
- const section=page.locator('nav, aside').filter({hasText:'More tools'}).first();
- for(const name of ['Gear maker','Jigsaw puzzle','Ruler maker']) await expect(section.getByRole('link',{name,exact:true})).toBeVisible();
+ const section=page.locator('.nav-group').filter({hasText:'Ready-made'});
+ for(const name of ['Product templates','Polygon box','Tags & keychains','Trophy base','Gear maker','Jigsaw puzzle','Ruler maker']) await expect(section.getByRole('link',{name,exact:true})).toBeVisible();
+ await expect(section.getByRole('link',{name:/Shakl/})).toHaveAttribute('href','https://shakl.omardeek.tech');
+ // The box maker stays with the working tools.
+ await expect(page.locator('.nav-group').filter({hasText:'Laser & CNC'}).getByRole('link',{name:'Box maker',exact:true})).toBeVisible();
+ await page.getByRole('link',{name:'Gear maker',exact:true}).click();
+ await expect(page.locator('.shakl-card')).toContainText('Looking for a ready 3D model?');
+ await page.getByRole('link',{name:'Box maker',exact:true}).click();
+ await expect(page.locator('.shakl-card')).toHaveCount(0);
 });
 test('the file check lists problems and zooms to each one',async({page})=>{
  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100"><rect x="10" y="10" width="20" height="20" stroke="red" fill="none"/><rect x="20" y="20" width="20" height="20" stroke="red" fill="none"/><path d="M70 70 L80 70" stroke="red"/></svg>';

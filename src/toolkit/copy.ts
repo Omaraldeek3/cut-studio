@@ -1,14 +1,19 @@
 export type Language='en'|'ar';
-export const toolIds=['trace','upscale','lettering','contour','clean','repeat','nest','box','polybox','hinge','tag','trophy','templates','pattern','engrave','testcard','kerf','cnc','feeds','tiles','sheet','quote','gear','puzzle','ruler','dpi'] as const;
+export const toolIds=['trace','upscale','lettering','contour','clean','repeat','nest','box','hinge','pattern','engrave','testcard','kerf','cnc','feeds','tiles','sheet','dpi','quote','templates','polybox','tag','trophy','gear','puzzle','ruler'] as const;
 export type ToolId=typeof toolIds[number];
-/** The tools grouped the way a workshop thinks about them, in toolIds order. */
-export const groups:{id:string;title:[string,string];tools:ToolId[]}[]=[
+/** A site of its own that sits in the sidebar next to the tools. */
+export type OutsideLink={href:string;title:[string,string];note:[string,string]};
+export const SHAKL_URL='https://shakl.omardeek.tech';
+export const shakl:OutsideLink={href:SHAKL_URL,title:['Shakl · 3D models','شكل · مجسّمات جاهزة'],note:['Laser-cut 3D models you preview, resize and download: houses, boxes, lanterns, desk organisers and more.','مجسّمات للقص بالليزر تعاينها ثلاثية الأبعاد وتغيّر مقاسها وتنزّلها: بيوت وصناديق وفوانيس ومنظّمات مكتب وغيرها.']};
+/** The tools grouped the way a workshop thinks about them, in toolIds order.
+ *  The working tools come first; the makers of one finished object (a gear,
+ *  a puzzle, a polygon box) sit together at the end as ready-made templates. */
+export const groups:{id:string;title:[string,string];tools:ToolId[];links?:OutsideLink[]}[]=[
   {id:'artwork',title:['Artwork','التصميم'],tools:['trace','upscale','lettering','contour','clean','repeat']},
-  {id:'laser',title:['Laser & CNC','الليزر والقص'],tools:['nest','box','polybox','hinge','tag','trophy','templates','pattern','engrave','testcard','kerf','cnc','feeds']},
-  {id:'print',title:['Print','الطباعة'],tools:['tiles','sheet']},
+  {id:'laser',title:['Laser & CNC','الليزر والقص'],tools:['nest','box','hinge','pattern','engrave','testcard','kerf','cnc','feeds']},
+  {id:'print',title:['Print','الطباعة'],tools:['tiles','sheet','dpi']},
   {id:'business',title:['Business','الأعمال'],tools:['quote']},
-  // Occasional makers and calculators; engraving prep and the upscaler already set DPI themselves.
-  {id:'extras',title:['More tools','أدوات إضافية'],tools:['gear','puzzle','ruler','dpi']},
+  {id:'ready',title:['Ready-made','قوالب جاهزة'],tools:['templates','polybox','tag','trophy','gear','puzzle','ruler'],links:[shakl]},
 ];
 export const groupOf=(id:ToolId)=>groups.find(g=>g.tools.includes(id))!;
 

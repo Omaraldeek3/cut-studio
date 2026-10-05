@@ -33,12 +33,19 @@ export async function shaperFrom(hb: typeof HB, bytes: Uint8Array, postscript?: 
   return { font: new hb.Font(face), upem: face.upem };
 }
 
+const readTajawal = async (script: string, weight: string) => new Uint8Array(await (await fetch(`/vendor/fonts/tajawal-${script}-${weight}-normal.woff`)).arrayBuffer());
+
 /** The built-in Tajawal: an Arabic file and a Latin file of one weight. */
 export async function builtInFonts(weight: string): Promise<{ engine: typeof HB; choice: FontChoice }> {
   const engine = await loadHarfBuzz();
-  const read = async (script: string) => new Uint8Array(await (await fetch(`/vendor/fonts/tajawal-${script}-${weight}-normal.woff`)).arrayBuffer());
-  const [arabic, latin] = await Promise.all([shaperFrom(engine, await read('arabic')), shaperFrom(engine, await read('latin'))]);
+  const [arabic, latin] = await Promise.all([shaperFrom(engine, await readTajawal('arabic', weight)), shaperFrom(engine, await readTajawal('latin', weight))]);
   return { engine, choice: { label: `Tajawal ${WEIGHTS.find(x => x.id === weight)?.en ?? ''}`, fonts: { arabic, latin } } };
+}
+
+/** Tajawal's Latin file at the nearest built-in weight, for an Arabic font that draws no Latin letters. */
+export async function builtInLatin(engine: typeof HB, weight: number) {
+  const nearest = [...WEIGHTS].sort((a, b) => Math.abs(+a.id - weight) - Math.abs(+b.id - weight))[0].id;
+  return shaperFrom(engine, await readTajawal('latin', nearest));
 }
 
 /** Shaped text as closed loops in font units, moved so its bounds start at

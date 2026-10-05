@@ -144,6 +144,31 @@ html[dir=rtl] .help-note { font-size: 13px; }
 
 .lt-text { width: 100%; min-height: 84px; padding: 10px 12px; resize: vertical; border: 1px solid var(--line-2); border-radius: var(--r1); background: var(--surface); color: var(--ink); font-size: 17px; line-height: 1.6; }
 .lt-warning { color: var(--danger) !important; }
+.lt-or { margin: 14px 0 6px; }
+
+/* Harf's fonts: a searchable list of cards, each in its own font. */
+.harf-picker { margin-bottom: 4px; }
+.harf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.harf-head b { font-size: 13.5px; }
+.harf-head span { color: var(--ink-3); font-size: 12px; }
+.harf-search { width: 100%; height: 36px; margin-bottom: 8px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r1); background: var(--surface); color: var(--ink); font-size: 13.5px; }
+.harf-search:focus { outline: 0; border-color: var(--accent); box-shadow: var(--ring); }
+.harf-cats { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.harf-cats button { padding: 3px 9px; border: 1px solid var(--line); border-radius: 99px; background: var(--surface); color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.harf-cats button.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+.harf-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; max-height: 330px; overflow: hidden auto; padding: 2px; margin: 0 -2px 10px; scrollbar-width: thin; }
+.harf-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; width: 100%; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r1); background: var(--surface); color: var(--ink); text-align: start; }
+.harf-card:hover:not(.selected) { border-color: var(--line-2); }
+.harf-card.selected { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.harf-sample { overflow: hidden; font-size: 24px; line-height: 1.5; white-space: nowrap; text-overflow: ellipsis; }
+.harf-name { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.harf-name b { font-size: 12.5px; font-weight: 650; }
+.harf-name small { color: var(--ink-3); font-size: 11.5px; white-space: nowrap; }
+.harf-failed { padding: 10px 12px; border-radius: var(--r1); background: var(--sunken); font-size: 12.5px; line-height: 1.6; }
+.harf-failed p { margin: 0; color: var(--ink-2); }
+.harf-weights { margin: 0 0 8px; }
+.harf-licence { margin: 0 0 4px; }
+.harf-licence a { color: var(--accent-strong); }
 
 /* ——— Engraving prep ——— */
 

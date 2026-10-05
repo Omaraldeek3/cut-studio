@@ -6,7 +6,9 @@ import type { ToolId } from './copy';
 import { tx, type Language } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Range, Section, Stat, Toggle, VectorPreview } from './ui';
 import { commandLoops, groupLoops, layoutText, type Align } from './lettering';
-import { builtInFonts, loadHarfBuzz, shaperFrom, WEIGHTS, type FontChoice, type LocalFont } from './fonts';
+import { builtInFonts, builtInLatin, loadHarfBuzz, shaperFrom, WEIGHTS, type FontChoice, type LocalFont } from './fonts';
+import { harfShaper, startWeight, weightNames, type HarfFont } from './harf';
+import { HarfPicker } from './harf-picker';
 import { offsetContours, stencilContours, unionContours } from './vector-ops';
 import { circle, roundedRect } from './generators';
 import { moveShape } from './geometry';
@@ -85,6 +87,7 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
   const [weight, setWeight] = useState('700');
   const [locals, setLocals] = useState<LocalFont[] | null>(null);
   const [localName, setLocalName] = useState('');
+  const [harf, setHarf] = useState<HarfFont | null>(null), [harfWeight, setHarfWeight] = useState(700);
   const [fit, setFit] = useState<'width' | 'height'>('width');
   const [size, setSize] = useState(600);
   const [lineHeight, setLineHeight] = useState(110);
@@ -115,13 +118,26 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
   useEffect(() => { void loadBuiltIn('700'); }, [loadBuiltIn]);
 
   const fromBytes = async (bytes: Uint8Array, label: string, postscript?: string) => {
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setHarf(null);
     try {
       const engine = await loadHarfBuzz();
       const shaper = await shaperFrom(engine, bytes, postscript);
       setHb(engine);
       setChoice({ label, fonts: { arabic: shaper, latin: shaper } });
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'The font could not be loaded.'); }
+    finally { setBusy(false); }
+  };
+
+  // A font from Harf, at a weight. An Arabic-only font sets Latin letters and digits in Tajawal.
+  const fromHarf = async (font: HarfFont, w: number) => {
+    setBusy(true); setError(''); setHarf(font); setHarfWeight(w);
+    try {
+      const engine = await loadHarfBuzz();
+      const arabic = await harfShaper(engine, font, w);
+      const latin = font.latin ? arabic : await builtInLatin(engine, w);
+      setHb(engine);
+      setChoice({ label: `${font.family}${font.weights.length > 1 ? ` ${weightNames[w]?.[0] ?? w}` : ''}`, fonts: { arabic, latin } });
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'The font could not be loaded.'); setHarf(null); }
     finally { setBusy(false); }
   };
 
@@ -182,7 +198,9 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
           </label>
         </Section>
         <Section title={tx(lang, 'Font', 'الخط')} number="02">
-          <div className="preset-row">{WEIGHTS.map(w => <button key={w.id} className={choice?.label.startsWith('Tajawal') && weight === w.id ? 'selected' : ''} onClick={() => { setWeight(w.id); setBusy(true); void loadBuiltIn(w.id); }}>{tx(lang, `Tajawal ${w.en}`, `تجوال ${w.ar}`)}</button>)}</div>
+          <HarfPicker lang={lang} text={text} selected={harf} weight={harfWeight} onPick={font => void fromHarf(font, startWeight(font))} onWeight={w => { if (harf) void fromHarf(harf, w); }} />
+          <p className="micro lt-or">{tx(lang, 'Built in, works without internet:', 'مدمج ويعمل دون إنترنت:')}</p>
+          <div className="preset-row">{WEIGHTS.map(w => <button key={w.id} className={choice?.label.startsWith('Tajawal') && weight === w.id ? 'selected' : ''} onClick={() => { setWeight(w.id); setHarf(null); setBusy(true); void loadBuiltIn(w.id); }}>{tx(lang, `Tajawal ${w.en}`, `تجوال ${w.ar}`)}</button>)}</div>
           <button className="button secondary wide" onClick={() => void listLocal()}>{tx(lang, 'Fonts on this computer…', 'الخطوط المثبتة على الجهاز…')}<Icon name="lettering" size={16} /></button>
           {locals && <label className="field" style={{ marginTop: 10 }}><span>{tx(lang, 'Installed font', 'خط مثبت')}</span>
             <select value={localName} onChange={async e => {

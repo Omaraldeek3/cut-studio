@@ -7,7 +7,7 @@ import { tx, type Language } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Range, Section, Stat, Toggle, VectorPreview } from './ui';
 import { commandLoops, groupLoops, layoutText, type Align } from './lettering';
 import { builtInFonts, loadHarfBuzz, shaperFrom, WEIGHTS, type FontChoice, type LocalFont } from './fonts';
-import { stencilContours, unionContours } from './vector-ops';
+import { offsetContours, stencilContours, unionContours } from './vector-ops';
 import { circle, roundedRect } from './generators';
 import { moveShape } from './geometry';
 
@@ -51,6 +51,34 @@ export function withPlate(letters: Shape[], width: number, height: number, o: Pl
   return { drawing: { width: w, height: h + gap + height, shapes: [plateShape, ...below] }, parts: 1 + below.length };
 }
 
+/** A cake topper: one backing piece, an outline `outline` mm around the
+ *  whole text with a bar along its bottom so every letter joins, and
+ *  `spikes` pointed stakes beneath. The text is either engraved on it or cut
+ *  as separate letters for a second colour, with an engraved guide on the
+ *  backing to place them. */
+export type TopperOptions = { outline: number; spikes: 1 | 2; spikeLength: number; spikeWidth: number; textOn: 'layered' | 'engrave' };
+export function topper(letters: Shape[], width: number, height: number, o: TopperOptions): { drawing: Drawing; parts: number; loose: number } {
+  if (!(o.outline >= 1 && o.outline <= 50)) throw new Error('Outline thickness must be between 1 and 50 mm.');
+  if (!(o.spikeLength >= 10 && o.spikeLength <= 300) || !(o.spikeWidth >= 2 && o.spikeWidth <= 40)) throw new Error('Spikes must be 10 to 300 mm long and 2 to 40 mm wide.');
+  const pad = o.outline, text = letters.map(s => moveShape(s, pad, pad));
+  const loops = text.flatMap(s => s.contours.map(c => c.points));
+  const silhouette = offsetContours(loops, o.outline);
+  // A bar across the lower part of the text joins letters the outline alone leaves apart.
+  const bar = roundedRect(pad, pad + height * 0.55, width, height * 0.45 + o.outline * 0.6, 0);
+  const bottom = pad + height + o.outline * 0.6, xs = o.spikes === 1 ? [pad + width / 2] : [pad + width * 0.25, pad + width * 0.75];
+  const spikes = xs.map(x => [{ x: x - o.spikeWidth / 2, y: bottom - 2 }, { x: x + o.spikeWidth / 2, y: bottom - 2 }, { x: x + o.spikeWidth / 2, y: bottom + o.spikeLength - o.spikeWidth }, { x, y: bottom + o.spikeLength }, { x: x - o.spikeWidth / 2, y: bottom + o.spikeLength - o.spikeWidth }]);
+  const back = unionContours([...silhouette.map(c => c.points), bar, ...spikes]);
+  // Pieces of the backing: outlines not inside another one.
+  const inside = (p: { x: number; y: number }, poly: { x: number; y: number }[]) => { let yes = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const a = poly[i], b = poly[j]; if ((a.y > p.y) !== (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x) yes = !yes; } return yes; };
+  const pieces = back.filter(c => back.filter(d => d !== c && inside(c.points[0], d.points)).length % 2 === 0).length;
+  const w = width + 2 * pad, h = bottom + o.spikeLength;
+  const backShape: Shape = { id: 'topper', name: 'Topper', contours: [...back, ...(o.textOn === 'engrave' || o.textOn === 'layered' ? text.flatMap(s => s.contours.map(c => ({ ...c, layer: 'engrave' as const }))) : [])] };
+  if (o.textOn === 'engrave') return { drawing: { width: w, height: h, shapes: [backShape] }, parts: 1, loose: pieces - 1 };
+  // The letters to cut in the second colour, below the topper; its engraving shows where they go.
+  const gap = 10, below = letters.map(s => moveShape(s, pad, h + gap));
+  return { drawing: { width: w, height: h + gap + height, shapes: [backShape, ...below] }, parts: 1 + below.length, loose: pieces - 1 };
+}
+
 export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (drawing: Drawing, tool: ToolId, name?: string) => void }) {
   const [text, setText] = useState('افتتاح قريباً');
   const [choice, setChoice] = useState<FontChoice | null>(null);
@@ -65,7 +93,9 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
   const [align, setAlign] = useState<Align>('center');
   const [welded, setWelded] = useState(true);
   const [mirror, setMirror] = useState(false);
-  const [plate, setPlate] = useState<'none' | 'rect' | 'pill'>('none');
+  const [plate, setPlate] = useState<'none' | 'rect' | 'pill' | 'topper'>('none');
+  const [topperOptions, setTopperOptions] = useState<TopperOptions>({ outline: 4, spikes: 2, spikeLength: 70, spikeWidth: 6, textOn: 'layered' });
+  const setTopper = <K extends keyof TopperOptions>(key: K) => (value: TopperOptions[K]) => setTopperOptions(v => ({ ...v, [key]: value }));
   const [padding, setPadding] = useState(15);
   const [plateRadius, setPlateRadius] = useState(6);
   const [holes, setHoles] = useState<0 | 2 | 4>(2);
@@ -135,9 +165,10 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
       const shapes: Shape[] = groups.map((group, i) => ({ id: `letter-${i}`, name: `Letter ${i + 1}`, contours: group.map(loop => byLoop.get(loop)!) }));
       const bridges = stenciled?.bridges ?? 0;
       if (plate === 'none') return { drawing: { width, height, shapes }, parts: groups.length, problem: '', bridges };
+      if (plate === 'topper') { const t = topper(shapes, width, height, topperOptions); return { drawing: t.drawing, parts: t.parts, problem: t.loose > 0 ? `${t.loose} parts of the topper are not joined to it. Raise the outline thickness.` : '', bridges }; }
       return { ...withPlate(shapes, width, height, { shape: plate, padding, radius: plateRadius, holes, holeSize, textOn }), problem: '', bridges };
     } catch (cause) { return { drawing: null, parts: 0, problem: cause instanceof Error ? cause.message : 'Lettering failed.' }; }
-  }, [layout, welded, size, fit, mirror, plate, padding, plateRadius, holes, holeSize, textOn, bridged, bridge]);
+  }, [layout, welded, size, fit, mirror, plate, padding, plateRadius, holes, holeSize, textOn, bridged, bridge, topperOptions]);
 
   const drawing = result.drawing;
   const name = text.trim().slice(0, 24).replace(/[\\/:*?"<>|\s]+/g, '-') || 'lettering';
@@ -194,8 +225,20 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
           <p className="micro">{tx(lang, 'Ties the inside of letters such as ه، ص، و and O to the sheet, so nothing falls out when the letters are cut out of it.', 'تربط داخل الحروف مثل ه وص وو وO باللوح، فلا يسقط شيء عند قص الحروف منه.')}{result.bridges ? tx(lang, ` ${result.bridges} bridges.`, ` عدد الجسور: ${result.bridges}.`) : ''}</p></>}
         </Section>
         <Section title={tx(lang, 'Sign plate', 'لوحة حول النص')} number="05">
-          <div className="preset-row">{([['none', tx(lang, 'No plate', 'بدون لوحة')], ['rect', tx(lang, 'Rectangle', 'مستطيلة')], ['pill', tx(lang, 'Rounded ends', 'أطراف دائرية')]] as const).map(([id, label]) => <button key={id} className={plate === id ? 'selected' : ''} onClick={() => setPlate(id)}>{label}</button>)}</div>
-          {plate !== 'none' && <>
+          <div className="preset-row">{([['none', tx(lang, 'No plate', 'بدون لوحة')], ['rect', tx(lang, 'Rectangle', 'مستطيلة')], ['pill', tx(lang, 'Rounded ends', 'أطراف دائرية')], ['topper', tx(lang, 'Cake topper', 'توبر كيك')]] as const).map(([id, label]) => <button key={id} className={plate === id ? 'selected' : ''} onClick={() => setPlate(id)}>{label}</button>)}</div>
+          {plate === 'topper' && <>
+            <div className="field-pair">
+              <NumberField label={tx(lang, 'Outline thickness', 'سماكة الحد حول النص')} value={topperOptions.outline} onChange={setTopper('outline')} min={1} max={50} step={0.5} unit="mm" />
+              <label className="field"><span>{tx(lang, 'Spikes', 'الأعواد')}</span><select value={topperOptions.spikes} onChange={e => setTopper('spikes')(Number(e.target.value) as 1 | 2)}><option value={1}>{tx(lang, 'One, in the middle', 'واحد في الوسط')}</option><option value={2}>{tx(lang, 'Two', 'اثنان')}</option></select></label>
+            </div>
+            <div className="field-pair">
+              <NumberField label={tx(lang, 'Spike length', 'طول العود')} value={topperOptions.spikeLength} onChange={setTopper('spikeLength')} min={10} max={300} unit="mm" />
+              <NumberField label={tx(lang, 'Spike width', 'عرض العود')} value={topperOptions.spikeWidth} onChange={setTopper('spikeWidth')} min={2} max={40} step={0.5} unit="mm" />
+            </div>
+            <label className="field"><span>{tx(lang, 'The text on it', 'النص عليه')}</span><select value={topperOptions.textOn} onChange={e => setTopper('textOn')(e.target.value as TopperOptions['textOn'])}><option value="layered">{tx(lang, 'Cut as letters in a second colour, glued on', 'حروف مقصوصة بلون ثانٍ تُلصق عليه')}</option><option value="engrave">{tx(lang, 'Engraved on the topper', 'محفور على التوبر')}</option></select></label>
+            <p className="micro">{tx(lang, 'Cut the topper from mirror or glitter acrylic or wood; the engraved text shows where to glue the letters. Wrap the spikes in food-safe film.', 'اقصص التوبر من أكريليك مرآة أو لامع أو من الخشب، والنص المحفور يبيّن مكان لصق الحروف. غلّف الأعواد بغلاف آمن للطعام.')}</p>
+          </>}
+          {plate !== 'none' && plate !== 'topper' && <>
             <div className="field-pair">
               <NumberField label={tx(lang, 'Margin around the text', 'الهامش حول النص')} value={padding} onChange={setPadding} min={2} max={500} unit="mm" />
               {plate === 'rect' && <NumberField label={tx(lang, 'Corner radius', 'نصف قطر الزوايا')} value={plateRadius} onChange={setPlateRadius} max={500} unit="mm" />}

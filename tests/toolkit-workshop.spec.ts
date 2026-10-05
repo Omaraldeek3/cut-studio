@@ -163,3 +163,17 @@ test("the trophy base maker draws its layers and plate", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Export DXF", exact: true })).toBeEnabled();
   expect(errors).toEqual([]);
 });
+
+test("Arabic lettering makes a cake topper with spikes and second-colour letters", async ({ page }) => {
+  const errors = await openTool(page, "Arabic lettering");
+  await expect(page.getByText("Ready to cut", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.locator(".lt-text").fill("عيد ميلاد سعيد");
+  await page.getByRole("button", { name: "Cake topper", exact: true }).click();
+  await expect(page.locator(".error-note")).toHaveCount(0);
+  const parts = page.locator(".stat").filter({ hasText: "Parts" }).first().locator("strong");
+  await expect(parts).not.toHaveText("1");
+  await page.locator("label.field").filter({ hasText: /^The text on it/ }).locator("select").selectOption("engrave");
+  await expect(parts).toHaveText("1");
+  await expect(page.getByRole("button", { name: "Export SVG", exact: true })).toBeEnabled();
+  expect(errors).toEqual([]);
+});

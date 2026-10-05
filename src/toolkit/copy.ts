@@ -1,10 +1,10 @@
 export type Language='en'|'ar';
-export const toolIds=['trace','upscale','lettering','contour','clean','repeat','nest','box','hinge','tag','pattern','engrave','testcard','kerf','tiles','sheet','quote','gear','puzzle','ruler','dpi'] as const;
+export const toolIds=['trace','upscale','lettering','contour','clean','repeat','nest','box','hinge','tag','pattern','engrave','testcard','kerf','cnc','tiles','sheet','quote','gear','puzzle','ruler','dpi'] as const;
 export type ToolId=typeof toolIds[number];
 /** The tools grouped the way a workshop thinks about them, in toolIds order. */
 export const groups:{id:string;title:[string,string];tools:ToolId[]}[]=[
   {id:'artwork',title:['Artwork','التصميم'],tools:['trace','upscale','lettering','contour','clean','repeat']},
-  {id:'laser',title:['Laser & CNC','الليزر والقص'],tools:['nest','box','hinge','tag','pattern','engrave','testcard','kerf']},
+  {id:'laser',title:['Laser & CNC','الليزر والقص'],tools:['nest','box','hinge','tag','pattern','engrave','testcard','kerf','cnc']},
   {id:'print',title:['Print','الطباعة'],tools:['tiles','sheet']},
   {id:'business',title:['Business','الأعمال'],tools:['quote']},
   // Occasional makers and calculators; engraving prep and the upscaler already set DPI themselves.
@@ -17,7 +17,7 @@ export const groupOf=(id:ToolId)=>groups.find(g=>g.tools.includes(id))!;
 export const slugs:Record<ToolId,string>={
   trace:'image-to-vector',upscale:'ai-image-upscaler',lettering:'arabic-lettering',contour:'contour-offset',clean:'vector-cleanup',repeat:'resize-repeat',
   nest:'nesting',box:'box-maker',gear:'gear-maker',hinge:'living-hinge',puzzle:'jigsaw-puzzle',tag:'keychains-tags',pattern:'grille-patterns',
-  engrave:'engraving-prep',testcard:'laser-test-card',kerf:'kerf-fit-test',ruler:'ruler-maker',tiles:'poster-tiling',sheet:'print-sheet',dpi:'dpi-calculator',quote:'job-quote',
+  engrave:'engraving-prep',testcard:'laser-test-card',kerf:'kerf-fit-test',cnc:'cnc-prep',ruler:'ruler-maker',tiles:'poster-tiling',sheet:'print-sheet',dpi:'dpi-calculator',quote:'job-quote',
 };
 export const toolFromSlug=(slug:string)=>toolIds.find(id=>slugs[id]===slug);
 /** The tool a bare locale address opens. */
@@ -41,13 +41,14 @@ export const seoTitles:Record<ToolId,[string,string]>={
   engrave:['Photo engraving prep with dithering for CO2 and fibre','تجهيز الصور للحفر بالليزر مع التنقيط'],
   testcard:['Laser power and speed test card','بطاقة اختبار القوة والسرعة لليزر'],
   kerf:['Kerf and fit test coupon for laser cutting','عينة اختبار التعشيق والكيرف للقص بالليزر'],
+  cnc:['CNC prep: dogbones, bit checks and holding tabs for any design','تجهيز ملفات CNC: تفريغ الزوايا وفحص الريشة وجسور التثبيت لأي تصميم'],
   ruler:['Ruler maker for laser engraving','صانع المساطر للحفر بالليزر'],
   tiles:['Poster tiling: split a large print into panels','تقسيم البوستر إلى ألواح للطباعة الكبيرة'],
   sheet:['Print sheet for stickers, labels and sublimation','ورقة طباعة للستيكرات والملصقات والسابليميشن'],
   dpi:['DPI calculator for engraving and print','حاسبة الدقة DPI للحفر والطباعة'],
   quote:['Laser and print job quote calculator','حاسبة عرض سعر لأعمال الليزر والطباعة'],
 };
-export const titles:Record<ToolId,[string,string]>={nest:['Material nesting','ترتيب القطع'],trace:['Image to vector','تحويل صورة إلى فيكتور'],clean:['Vector cleanup','تنظيف الفيكتور'],repeat:['Resize & repeat','المقاس والتكرار'],quote:['Job quote','عرض السعر'],kerf:['Fit test','اختبار التعشيق'],engrave:['Engraving prep','تجهيز صور الحفر'],box:['Box maker','صانع الصناديق'],
+export const titles:Record<ToolId,[string,string]>={cnc:['CNC prep','تجهيز CNC'],nest:['Material nesting','ترتيب القطع'],trace:['Image to vector','تحويل صورة إلى فيكتور'],clean:['Vector cleanup','تنظيف الفيكتور'],repeat:['Resize & repeat','المقاس والتكرار'],quote:['Job quote','عرض السعر'],kerf:['Fit test','اختبار التعشيق'],engrave:['Engraving prep','تجهيز صور الحفر'],box:['Box maker','صانع الصناديق'],
   upscale:['AI upscaler','تكبير الصور بالذكاء الاصطناعي'],tiles:['Poster tiling','تقسيم البوستر'],contour:['Contour & offset','الكونتور والإزاحة'],lettering:['Arabic lettering','الكتابة العربية'],sheet:['Print sheet','ورقة الطباعة'],
   hinge:['Living hinge','المفصل المرن'],gear:['Gear maker','صانع التروس'],puzzle:['Jigsaw puzzle','صانع البازل'],tag:['Tags & keychains','الميداليات والبطاقات'],pattern:['Grille patterns','نقوش التهوية'],testcard:['Power & speed test','بطاقة اختبار القوة والسرعة'],ruler:['Ruler maker','صانع المساطر'],dpi:['Resolution & DPI','الدقة والـDPI']};
 export const descriptions:Record<ToolId,[string,string]>={
@@ -56,6 +57,7 @@ export const descriptions:Record<ToolId,[string,string]>={
   clean:['Repair a file for cutting: remove overlapping lines, join small gaps and cut the nodes down to clean lines and arcs.','أصلح الملف للقص: احذف الخطوط المتداخلة، واربط الفجوات الصغيرة، وحوّل النقاط الكثيرة إلى خطوط وأقواس نظيفة.'],
   repeat:['One design, exactly the size you need. Scale and repeat with precise spacing.','اضبط أبعاد التصميم وكرّره بمسافات دقيقة.'],
   quote:['Price a job from its material, machine time, labour and margin, and send the customer a quote.','سعّر العمل من الخامة ووقت الماكينة والأجرة والربح، وأرسل للزبون عرض السعر.'],
+  cnc:['Get any design ready for a CNC router: dogbones in inside corners, holes too narrow for the bit, and holding tabs.','جهّز أي تصميم لراوتر CNC: تفريغ الزوايا الداخلية، وكشف الثقوب الأضيق من الريشة، وجسور التثبيت.'],
   kerf:['Find the fit that feels right. Generate a slotted coupon for your material.','أنشئ عينة بفتحات مختلفة لاختيار المقاس الأنسب لتعشيق الخامة.'],
   engrave:['Prepare photos for CO2 and fibre engraving at the real line resolution, with material presets and eight dithering methods.','جهّز الصور للحفر بليزر CO2 والفايبر بدقة الأسطر الحقيقية، مع إعدادات جاهزة للخامات وثماني طرق تنقيط.'],
   box:['Design a finger-joint box to your size and material, ready to cut.','صمّم صندوقاً بتعشيق الأسنان بمقاسك وسماكة خامتك، جاهزاً للقص.'],

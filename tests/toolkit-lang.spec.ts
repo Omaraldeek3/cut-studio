@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { toolIds } from "../src/toolkit/copy";
 
 // Each tool has an address in each language; the address alone sets the
 // language and direction, with no hydration mismatch.
@@ -45,7 +46,8 @@ test("every tool page has its own title, description and language alternates", a
   expect(html).toContain("<title>بطاقة اختبار القوة والسرعة لليزر · Cut Studio</title>");
   expect(html.toLowerCase()).toContain('hreflang="en" href="https://cutstudio.omardeek.tech/en/laser-test-card"');
   const sitemap = await (await request.get("/sitemap.xml")).text();
-  expect(sitemap.match(/<loc>/g)).toHaveLength(42);
+  // Every tool, in both languages.
+  expect(sitemap.match(/<loc>/g)).toHaveLength(toolIds.length * 2);
 });
 
 test("an unknown tool is not found", async ({ request }) => {

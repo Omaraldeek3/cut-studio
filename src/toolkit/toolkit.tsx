@@ -6,6 +6,7 @@ import { defaultTool, descriptions, groupOf, groups, slugs, titles, toolFromSlug
 import { Icon } from './ui';
 import { NestWorkspace, EditWorkspace, KerfWorkspace } from './vector-workspaces';
 import { QuoteWorkspace } from './quote-workspace';
+import { CncWorkspace } from './cnc-workspace';
 import type { NestedJob } from './quote';
 import { BoxWorkspace } from './box-workspace';
 import { EngraveWorkspace } from './engrave-workspace';
@@ -51,6 +52,7 @@ export default function Toolkit({lang}:{lang:Language}){
   case 'clean':case 'repeat':return <EditWorkspace key={active} {...props} tool={active}/>;
   case 'quote':return <QuoteWorkspace {...props} job={job&&job.drawing===drawing?job:null}/>;
   case 'kerf':return <KerfWorkspace lang={lang}/>;
+  case 'cnc':return <CncWorkspace {...props}/>;
   case 'engrave':return <EngraveWorkspace lang={lang}/>;
   case 'box':return <BoxWorkspace lang={lang} onNest={onNest}/>;
   case 'hinge':return <HingeWorkspace lang={lang} onNest={onNest}/>;

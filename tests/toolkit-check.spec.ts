@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { checkDrawing } from '../src/toolkit/check';
+import { checkDrawing, smallDetails } from '../src/toolkit/check';
 import type { Contour, Drawing } from '../src/toolkit/types';
 
 const box = (x: number, y: number, w: number, h: number, extra: Partial<Contour> = {}): Contour => ({ closed: true, points: [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }], ...extra });
@@ -32,4 +32,10 @@ test('engraving may cross cut lines and be open; a figure-eight outline crosses 
   expect(kinds(drawing(box(10, 10, 30, 30), { closed: false, layer: 'engrave', points: [{ x: 0, y: 25 }, { x: 50, y: 25 }] }))).toEqual({});
   const eight: Contour = { closed: true, points: [{ x: 10, y: 10 }, { x: 30, y: 30 }, { x: 30, y: 10 }, { x: 10, y: 30 }] };
   expect(kinds(drawing(eight))).toEqual({ crossing: 1 });
+});
+
+test('details smaller than the machine makes are counted, pieces and holes alike', () => {
+  const d = drawing(box(10, 10, 30, 30), box(20, 20, 0.5, 0.4), box(60, 60, 0.7, 3), box(80, 80, 0.3, 0.3));
+  expect(smallDetails(d, 0.8).count).toBe(2);
+  expect(smallDetails(d, 0.2).count).toBe(0);
 });

@@ -8,6 +8,7 @@ import { toDxf } from './export';
 import { defaultVectorize, MAX_COLOURS, pathData, type VectorizeOptions, type VectorResult } from './vectorize';
 import type { WorkerRequest } from './upscale.worker';
 import { colorPdf, colorSvg, cutDrawing, layerParts, outlineSvg, outputHeight, resultToDrawing } from './vector-export';
+import { smallDetails } from './check';
 import { decodeImage, ImageDrop, IMAGE_TYPES, saveFile, usePastedImage } from './image-input';
 
 /* The image-to-vector tool. It re-traces on its own a moment after any
@@ -83,10 +84,20 @@ function VectorArt({ result, outline }: { result: VectorResult; outline: boolean
   );
 }
 
+/** Starting points for the common jobs; every setting stays adjustable. */
+const PRESETS: { id: string; en: string; ar: string; options: Partial<VectorizeOptions> }[] = [
+  { id: 'logo', en: 'Logo for print', ar: 'شعار للطباعة', options: { mode: 'color', colors: 6, layering: 'stacked', denoise: true, detail: 70, smoothing: 40, corners: 70, gradients: false } },
+  { id: 'cut', en: 'Laser cut', ar: 'قص بالليزر', options: { mode: 'outline', threshold: -1, invert: false, denoise: true, detail: 40, smoothing: 55, corners: 60 } },
+  { id: 'engrave', en: 'Laser engrave', ar: 'حفر بالليزر', options: { mode: 'outline', threshold: -1, invert: false, denoise: true, detail: 75, smoothing: 30, corners: 50 } },
+  { id: 'vinyl', en: 'Vinyl cut-out', ar: 'قص فينيل', options: { mode: 'color', colors: 4, layering: 'cutout', removeBackground: true, denoise: true, detail: 45, smoothing: 50, corners: 65 } },
+];
+
 export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (drawing: Drawing) => void }) {
   const [source, setSource] = useState<Source>(() => ({ raster: sampleArtwork(), name: 'sample', naturalWidth: 360, naturalHeight: 260, scaled: false }));
   const [options, setOptions] = useState<VectorizeOptions>({ ...defaultVectorize, colors: 12 });
   const [width, setWidth] = useState(300);
+  // The smallest shape or hole the machine makes cleanly; smaller ones are counted.
+  const [minDetail, setMinDetail] = useState(0.8);
   const [job, setJob] = useState<Job | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -194,6 +205,8 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
   useEffect(() => () => worker.current?.terminate(), []);
 
   const drawing = useMemo(() => (result ? resultToDrawing(result, width) : null), [result, width]);
+  const cutting = options.mode === 'outline' || options.layering === 'cutout';
+  const tiny = useMemo(() => (drawing && cutting && minDetail > 0 ? smallDetails(drawing, minDetail).count : 0), [drawing, cutting, minDetail]);
   const heightMm = result ? outputHeight(result, width) : (source.raster.height / source.raster.width) * width;
   const base = `${source.name}-${outline ? 'outline' : `${result?.layers.length ?? 0}-colours`}`;
   const validWidth = Number.isFinite(width) && width >= 1 && width <= 20000;
@@ -225,6 +238,8 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
         </Section>
 
         <Section title={tx(lang, 'What is it for?', 'لأي استخدام؟')} number="02">
+          <div className="preset-row vz-presets">{PRESETS.map(p => <button key={p.id} type="button" onClick={() => setOptions(o => ({ ...o, ...p.options, hidden: [] }))}>{tx(lang, p.en, p.ar)}</button>)}</div>
+          <p className="micro">{tx(lang, 'A preset sets everything below for the job; adjust from there.', 'الإعداد الجاهز يضبط كل ما تحته حسب الاستخدام، ثم عدّل منه.')}</p>
           <div className="vz-modes" role="radiogroup" aria-label={tx(lang, 'Mode', 'الوضع')}>
             <button role="radio" aria-checked={!outline} className={!outline ? 'selected' : ''} onClick={() => set('mode')('color')}>
               <b>{tx(lang, 'Colour', 'ملوّن')}</b><span>{tx(lang, 'Print & enlarge', 'للطباعة والتكبير')}</span>
@@ -269,6 +284,8 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
         <Section title={tx(lang, 'Output size', 'مقاس الناتج')} number="04">
           <NumberField label={tx(lang, 'Width', 'العرض')} value={width} onChange={setWidth} min={1} max={20000} step={1} unit="mm" />
           <p className="micro" dir="ltr">{validWidth ? `${width} × ${heightMm.toFixed(1)} mm` : '—'}</p>
+          {cutting && <NumberField label={tx(lang, 'Smallest detail your machine makes', 'أصغر تفصيل تصنعه ماكينتك')} value={minDetail} onChange={setMinDetail} min={0} max={20} step={0.1} unit="mm" />}
+          {tiny > 0 && <div className="tip-card" role="status"><span className="tip-mark">!</span><p>{tx(lang, `${tiny} shapes or holes are smaller than ${minDetail} mm: too small to cut cleanly; they burn away or fall out. Lower Detail, or make the output wider.`, `أشكال أو ثقوب أصغر من ${minDetail} مم: ${tiny}. أصغر من أن تُقص بنظافة، فتحترق أو تسقط. قلّل التفاصيل أو كبّر عرض الناتج.`)}</p></div>}
         </Section>
         <div className="control-action"><ErrorNote error={error} lang={lang} /></div>
       </aside>

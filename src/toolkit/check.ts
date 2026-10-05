@@ -79,3 +79,17 @@ export function checkDrawing(d: Drawing): { kind: IssueKind; count: number; at: 
   const order: IssueKind[] = ['outside', 'crossing', 'overlap', 'open', 'tiny'];
   return order.filter(k => found.has(k)).map(kind => ({ kind, ...found.get(kind)! }));
 }
+
+/** Closed shapes and holes smaller than `min` mm both ways: details a
+ *  machine cannot make cleanly (they burn away, or fall out of the sheet). */
+export function smallDetails(d: Drawing, min: number): { count: number; at: Point[] } {
+  const at: Point[] = [];
+  let count = 0;
+  for (const s of d.shapes) for (const c of s.contours) {
+    if (!c.closed || c.points.length < 3) continue;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const p of c.points) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+    if (x1 - x0 < min && y1 - y0 < min) { count++; if (at.length < MAX_PLACES) at.push({ x: (x0 + x1) / 2, y: (y0 + y1) / 2 }); }
+  }
+  return { count, at };
+}

@@ -139,3 +139,18 @@ test("the tag maker makes a batch of numbered tags", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Export SVG", exact: true })).toBeEnabled({ timeout: 30_000 });
   expect(errors).toEqual([]);
 });
+
+test("image to vector offers job presets and warns about details too small to cut", async ({ page }) => {
+  const errors = await openTool(page, "Image to vector");
+  await page.getByRole("button", { name: "Laser cut", exact: true }).click();
+  await expect(page.getByRole("radio", { name: /Outline/ })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText("Vector ready", { exact: true })).toBeVisible({ timeout: 30_000 });
+  // At 10 mm wide no shape of the sample reaches 15 mm.
+  await page.getByRole("spinbutton", { name: /^Width/ }).fill("10");
+  await page.getByLabel("Smallest detail your machine makes").fill("15");
+  await expect(page.getByText(/shapes or holes are smaller than 15 mm/)).toBeVisible();
+  await page.getByRole("button", { name: "Logo for print", exact: true }).click();
+  await expect(page.getByRole("radio", { name: /Colour/ })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText(/shapes or holes are smaller than/)).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

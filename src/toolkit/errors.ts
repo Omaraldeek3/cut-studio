@@ -183,6 +183,8 @@ const EXACT: Record<string, string> = {
   'Saving failed.': 'تعذّر الحفظ.',
   'The sheet could not be saved.': 'تعذّر حفظ الورقة.',
   'The font could not be loaded.': 'تعذّر تحميل الخط.',
+  'The Harf font library could not be reached.': 'تعذّر الوصول إلى مكتبة خطوط حرف.',
+  'This font has no files.': 'لا توجد ملفات لهذا الخط.',
   'This image could not be opened. Very large files may need to be saved as JPEG first.': 'تعذّر فتح الصورة. الملفات الكبيرة جداً قد تحتاج حفظها بصيغة JPEG أولاً.',
   'This image could not be opened.': 'تعذّر فتح الصورة.',
   'Upscaling failed.': 'تعذّر تكبير الصورة.',

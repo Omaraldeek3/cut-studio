@@ -12,6 +12,7 @@ const drawings: [string, () => Drawing][] = [
   ['gear', () => g.gearDrawing(g.defaultGear)],
   ['puzzle', () => g.puzzleDrawing(g.defaultPuzzle)],
   ['tag', () => g.tagDrawing(g.defaultTag)],
+  ...(['turn', 'bolt'] as const).map((kind): [string, () => Drawing] => [`latch ${kind}`, () => ({ width: 200, height: 40, shapes: g.latchParts(kind, 3) })]),
   ...[5, 6, 8, 12].map((sides): [string, () => Drawing] => [`polygon box ${sides}`, () => polyBoxDrawing({ ...defaultPolyBox, sides })]),
   ...(['arch', 'rounded', 'square'] as const).map((plateTop): [string, () => Drawing] => [`trophy ${plateTop}`, () => g.trophyDrawing({ ...g.defaultTrophy, plateTop })]),
   ...(['hex', 'circle', 'slot', 'diamond'] as const).map((kind): [string, () => Drawing] => [`pattern-${kind}`, () => g.patternDrawing({ ...g.defaultPattern, kind })]),

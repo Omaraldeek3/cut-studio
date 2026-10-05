@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import {
   defaultGear, defaultHinge, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
   centreDistance, gearDrawing, gearGeometry, gearPairDrawing, hingeDrawing, jobEstimate, patternDrawing, printSize, puzzleDrawing, resolution,
-  rulerDrawing, steps, tagBatch, tagDrawing, testCardDrawing, trophyDrawing, defaultTrophy, defaultJob,
+  rulerDrawing, steps, tagBatch, tagDrawing, testCardDrawing, trophyDrawing, defaultTrophy, latchParts, defaultJob,
 } from "../src/toolkit/generators";
 import { toDxf, toSvg } from "../src/toolkit/export";
 import type { Drawing } from "../src/toolkit/types";
@@ -174,4 +174,16 @@ test("a trophy base has slotted layers on top, solid ones beneath, and a plate t
   expect(Math.max(...plate.map(p => p.y)) - Math.min(...plate.map(p => p.y))).toBeCloseTo(defaultTrophy.plateHeight, 6);
   expect(() => trophyDrawing({ ...defaultTrophy, slotLayers: 4, layers: 3 })).toThrow(/1 to 10 layers/);
   expect(() => trophyDrawing({ ...defaultTrophy, plateWidth: 158 })).toThrow(/Plate width/);
+});
+
+test("latch parts: two turn buttons with washers, or a sliding bolt with guide, keeper and spacers", () => {
+  expect(latchParts("none", 3)).toEqual([]);
+  const turn = latchParts("turn", 3);
+  expect(turn.map(s => s.id)).toEqual(["turn-1", "turn-2", "washer-1", "washer-2"]);
+  expect(turn.every(s => s.contours.length === 2)).toBe(true);
+  const bolt = latchParts("bolt", 3);
+  expect(bolt.map(s => s.id)).toEqual(["bolt", "guide", "keeper", "spacer-1", "spacer-2", "spacer-3", "spacer-4"]);
+  // Laid out in a row without touching.
+  const boxes = bolt.map(s => { const xs = s.contours.flatMap(c => c.points.map(p => p.x)); return [Math.min(...xs), Math.max(...xs)]; });
+  for (let i = 1; i < boxes.length; i++) expect(boxes[i][0]).toBeGreaterThan(boxes[i - 1][1]);
 });

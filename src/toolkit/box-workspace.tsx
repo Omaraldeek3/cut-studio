@@ -1,7 +1,8 @@
 'use client';
 import { useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { bounds } from './geometry';
+import { bounds, moveShape } from './geometry';
+import { latchParts, type LatchKind } from './generators';
 import { buildBox, defaultBoxOptions, hasLid, type BoxOptions, type BoxResult, type BoxType } from './box';
 import { tx, type Language } from './copy';
 import type { Drawing } from './types';
@@ -34,7 +35,14 @@ export function BoxWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
   const { result, error } = useMemo((): { result: BoxResult | null; error: string } => {
     try { return { result: buildBox(options), error: '' }; } catch (e) { return { result: null, error: e instanceof Error ? e.message : 'Invalid box settings.' }; }
   }, [options]);
-  const drawing = result?.drawing ?? null, lid = hasLid(options.type);
+  const [latch, setLatch] = useState<LatchKind>('none');
+  // Latch parts go below the box's own, from the same sheet.
+  const drawing = useMemo(() => {
+    const d = result?.drawing ?? null, parts = d ? latchParts(latch, options.thickness) : [];
+    if (!d || !parts.length) return d;
+    const extra = parts.map(p => moveShape(p, 0, d.height + 10)), h = Math.max(...extra.map(p => { const b = bounds(p); return b.y + b.height; }));
+    return { ...d, height: h, width: Math.max(d.width, ...extra.map(p => { const b = bounds(p); return b.x + b.width; })), shapes: [...d.shapes, ...extra] };
+  }, [result, latch, options.thickness]), lid = hasLid(options.type);
   const size = (s: { width: number; depth: number; height: number }) => `${+s.width.toFixed(1)} × ${+s.depth.toFixed(1)} × ${+s.height.toFixed(1)}`;
   const nestButton = <button className="button secondary" disabled={!drawing} onClick={() => { if (drawing) onNest(drawing); }}><Icon name="nest" size={16}/>{tx(lang, 'Arrange on sheet', 'ترتيب على اللوح')}</button>;
   const name = result ? `${options.type}-box-${Math.round(result.outside.width)}x${Math.round(result.outside.depth)}x${Math.round(result.outside.height)}-${options.thickness}mm` : 'box';
@@ -72,6 +80,8 @@ export function BoxWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
         {options.handHoles.enabled && <div className="field-pair"><NumberField label={tx(lang, 'Hole width', 'عرض الفتحة')} value={options.handHoles.width} onChange={setHand('width')} min={5} unit="mm"/><NumberField label={tx(lang, 'Hole height', 'ارتفاع الفتحة')} value={options.handHoles.height} onChange={setHand('height')} min={5} unit="mm"/><NumberField label={tx(lang, 'From top', 'من الأعلى')} value={options.handHoles.fromTop} onChange={setHand('fromTop')} unit="mm"/></div>}</>}
       {lid && <div className="field-pair"><label className="field"><span>{tx(lang, 'Pull', 'مقبض')}</span><select aria-label={tx(lang, 'Pull', 'مقبض')} value={options.pull} onChange={e => set('pull')(e.target.value as BoxOptions['pull'])}><option value="none">{tx(lang, 'None', 'بدون')}</option><option value="thumb">{tx(lang, 'Thumb hole', 'فتحة إبهام')}</option><option value="slot">{tx(lang, 'Finger slot', 'فتحة أصابع')}</option></select></label>{options.pull !== 'none' && <NumberField label={tx(lang, 'Pull size', 'مقاس المقبض')} value={options.pullSize} onChange={set('pullSize')} min={5} max={200} unit="mm"/>}</div>}
       <div className="field-pair"><NumberField label={tx(lang, 'Corner radius', 'تدوير الزوايا')} value={options.cornerRadius} onChange={set('cornerRadius')} max={100} step={0.5} unit="mm"/><NumberField label={tx(lang, 'CNC dogbone', 'تفريغ CNC')} value={options.dogbone} onChange={set('dogbone')} max={5} step={0.1} unit="mm"/></div>
+      {lid && <label className="field"><span>{tx(lang, 'Latch', 'القفل')}</span><select aria-label={tx(lang, 'Latch', 'القفل')} value={latch} onChange={e => setLatch(e.target.value as LatchKind)}><option value="none">{tx(lang, 'None', 'بدون')}</option><option value="turn">{tx(lang, 'Two turn buttons', 'زرّان دوّاران')}</option><option value="bolt">{tx(lang, 'Sliding bolt', 'مزلاج منزلق')}</option></select></label>}
+      {lid && latch !== 'none' && <p className="micro">{latch === 'turn' ? tx(lang, 'Screw each button to a wall just below the lid, with its washer under it, and turn it over the lid to lock. Holes take 3.5 mm screws.', 'ثبّت كل زر بمسمار على الجدار تحت الغطاء مباشرة مع الحلقة تحته، وأدِره فوق الغطاء ليقفل. الثقوب لمسامير ٣٫٥ مم.') : tx(lang, 'Screw the guide to the front wall and the keeper to the lid, each over two spacers, so the bolt slides from one into the other. Holes take 3.5 mm screws.', 'ثبّت الدليل على الجدار الأمامي والقفل المقابل على الغطاء، كلٌّ فوق فاصلين، لينزلق المزلاج من أحدهما إلى الآخر. الثقوب لمسامير ٣٫٥ مم.')}</p>}
       <p className="micro">{tx(lang, 'Corners are rounded only where no joint meets them (lids, drawer face). Dogbone is the router bit radius; leave 0 for laser.', 'تُدوّر الزوايا الحرة فقط (الأغطية وواجهة الدرج). التفريغ هو نصف قطر ريشة الراوتر؛ اتركه ٠ لليزر.')}</p>
     </Section>
     <div className="control-action"><ErrorNote error={error} lang={lang}/></div>

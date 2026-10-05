@@ -1,7 +1,7 @@
 import type { Contour, Drawing, Pen, Point, Shape } from './types';
 import { strokeText, textWidth } from './box/font';
 import { unionContours } from './vector-ops';
-import { moveShape } from './geometry';
+import { bounds, moveShape } from './geometry';
 
 /* Pure generators for the parametric tools. Every function returns a Drawing
    in millimetres with y pointing down, the same shape every other tool reads
@@ -108,6 +108,33 @@ export function hingeDrawing(o: HingeOptions): Drawing {
     }
   }
   return { width: o.width, height: o.height, shapes: [shape('panel', 'Hinge panel', [closed(roundedRect(0, 0, o.width, o.height, o.radius)), ...slits])] };
+}
+
+// ——— Latches ———
+
+export type LatchKind = 'none' | 'turn' | 'bolt';
+/** Latch parts cut from the box's own material, screwed or glued on.
+ *  Turn buttons: a pair of catches that pivot on a screw, each with a
+ *  washer under it so it clears the lid's edge. Sliding bolt: the bolt,
+ *  with a knob, runs in a guide on the box and locks into a keeper on the
+ *  lid; each is a cover over two spacers as thick as the bolt. */
+export function latchParts(kind: LatchKind, thickness: number, screw = 3.5): Shape[] {
+  check(thickness, 0.5, 30, 'Material thickness');
+  if (kind === 'none') return [];
+  const hole = (x: number, y: number) => closed(circle(x, y, screw / 2)), gap = 4;
+  const row = (parts: Shape[]) => { let x = 0; return parts.map(p => { const b = bounds(p), out = moveShape(p, x - b.x, -b.y); x += b.width + gap; return out; }); };
+  if (kind === 'turn') {
+    const button = (i: number) => shape(`turn-${i}`, `Turn button ${i}`, [closed(roundedRect(0, 0, 36, 12, 6)), hole(9, 6)]);
+    const washer = (i: number) => shape(`washer-${i}`, `Washer ${i}`, [closed(circle(6, 6, 6)), hole(6, 6)]);
+    return row([button(1), button(2), washer(1), washer(2)]);
+  }
+  // The channel is 0.4 mm wider than the bolt, so it slides.
+  const b = 8, channel = b + 0.4, side = 5, length = 18;
+  const bolt = shape('bolt', 'Bolt', [closed([{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: -8 }, { x: 26, y: -8 }, { x: 26, y: 0 }, { x: 60, y: 0 }, { x: 60, y: b }, { x: 0, y: b }])]);
+  const cover = (name: string) => shape(name, name === 'guide' ? 'Guide cover' : 'Keeper cover', [closed(roundedRect(0, 0, length, channel + 2 * side, 1)), hole(length / 2, side / 2), hole(length / 2, channel + 1.5 * side)]);
+  // The screws go through the spacers too.
+  const spacer = (i: number) => shape(`spacer-${i}`, `Spacer ${i}`, [closed(roundedRect(0, 0, length, side, 0.5)), hole(length / 2, side / 2)]);
+  return row([bolt, cover('guide'), cover('keeper'), spacer(1), spacer(2), spacer(3), spacer(4)]);
 }
 
 // ——— Trophy base ———

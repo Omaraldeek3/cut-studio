@@ -177,3 +177,14 @@ test("Arabic lettering makes a cake topper with spikes and second-colour letters
   await expect(page.getByRole("button", { name: "Export SVG", exact: true })).toBeEnabled();
   expect(errors).toEqual([]);
 });
+
+test("the box maker adds latch parts to a lidded box", async ({ page }) => {
+  const errors = await openTool(page, "Box maker");
+  await page.getByRole("radio", { name: "Lift-off lid" }).click();
+  const layout = page.locator(".stat").filter({ hasText: "Layout size" }).first().locator("strong");
+  const before = await layout.innerText();
+  await page.getByLabel("Latch", { exact: true }).selectOption("bolt");
+  await expect(layout).not.toHaveText(before);
+  await expect(page.getByText(/Screw the guide to the front wall/)).toBeVisible();
+  expect(errors).toEqual([]);
+});

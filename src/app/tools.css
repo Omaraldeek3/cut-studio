@@ -287,6 +287,8 @@ html[dir=rtl] .preview-top > span { letter-spacing: 0; }
 .stat.long strong { font-size: clamp(11px, calc(160cqi / var(--chars)), 22px); }
 .stat small { margin-inline-start: 4px; font-size: 12.5px; font-weight: 550; color: var(--ink-3); }
 
+/* Product templates: settings two to a row. */
+.template-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 /* Moving nested parts by hand. */
 .sheet-editor-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
 .sheet-editor-tools .micro { margin: 0; }

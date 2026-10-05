@@ -22,7 +22,7 @@ const FIELDS: Record<string, string> = {
   'Second gear teeth': 'أسنان الترس الثاني', 'Sheet height': 'ارتفاع اللوح', 'Sheet price': 'سعر اللوح', 'Sheet width': 'عرض اللوح', Sheets: 'الألواح',
   'Simplify tolerance': 'انحراف التبسيط', 'Slit length': 'طول الشق', Slots: 'الفتحات', Smoothing: 'التنعيم', Spacing: 'التباعد',
   'Square size': 'مقاس المربع', Step: 'الخطوة', 'Tab size': 'مقاس اللسان', 'Text height': 'ارتفاع النص', Threshold: 'العتبة',
-  'Travel allowance': 'زمن التنقل', Flutes: 'عدد الحدود', Rim: 'الحافة', 'Plate thickness': 'سماكة اللوح', 'Plate width': 'عرض اللوح', 'Plate height': 'ارتفاع اللوح', 'Slot position': 'موضع المجرى', 'Lowest spindle speed': 'أدنى سرعة دوران', 'Highest spindle speed': 'أعلى سرعة دوران', 'Highest feed rate': 'أعلى سرعة تغذية', 'Chip load': 'سماكة الرايش', 'Bit diameter': 'قطر الريشة', Finishing: 'التشطيب', 'Minimum price': 'الحد الأدنى للسعر', Wall: 'الجدار', Width: 'العرض', 'Image width': 'عرض الصورة', 'Image height': 'ارتفاع الصورة',
+  'Travel allowance': 'زمن التنقل', Flutes: 'عدد الحدود', Rim: 'الحافة', 'QR size': 'مقاس QR', 'Card width': 'عرض الورقة', 'Card height': 'ارتفاع الورقة', 'Card thickness': 'سماكة الورقة', 'Base depth': 'عمق القاعدة', 'Screw holes (0, 2 or 4)': 'ثقوب المسامير', Spacers: 'حلقات التبعيد', 'Width between sides': 'العرض بين الجانبين', 'Lean angle': 'زاوية الميل', 'Item thickness': 'سماكة القطعة المعروضة', 'Stack depth': 'سماكة رزمة البطاقات', 'Napkin size': 'مقاس المناديل', 'Gap between sides': 'المسافة بين الجانبين', 'How many': 'العدد', 'Label width': 'عرض مساحة الاسم', 'Stake length': 'طول العود', 'Plate thickness': 'سماكة اللوح', 'Plate width': 'عرض اللوح', 'Plate height': 'ارتفاع اللوح', 'Slot position': 'موضع المجرى', 'Lowest spindle speed': 'أدنى سرعة دوران', 'Highest spindle speed': 'أعلى سرعة دوران', 'Highest feed rate': 'أعلى سرعة تغذية', 'Chip load': 'سماكة الرايش', 'Bit diameter': 'قطر الريشة', Finishing: 'التشطيب', 'Minimum price': 'الحد الأدنى للسعر', Wall: 'الجدار', Width: 'العرض', 'Image width': 'عرض الصورة', 'Image height': 'ارتفاع الصورة',
 };
 const field = (name: string) => FIELDS[name] ?? name;
 
@@ -186,6 +186,9 @@ const EXACT: Record<string, string> = {
   'This image could not be opened. Very large files may need to be saved as JPEG first.': 'تعذّر فتح الصورة. الملفات الكبيرة جداً قد تحتاج حفظها بصيغة JPEG أولاً.',
   'This image could not be opened.': 'تعذّر فتح الصورة.',
   'Upscaling failed.': 'تعذّر تكبير الصورة.',
+  'The QR square does not fit the plate. Make it smaller or the plate larger.': 'مربع QR لا يتسع في اللوح. صغّره أو كبّر اللوح.',
+  'A sign takes 0, 2 or 4 screw holes.': 'اللوحة تأخذ 0 أو 2 أو 4 ثقوب.',
+  'Unknown template.': 'قالب غير معروف.',
   'Use 5 to 12 sides.': 'استخدم من 5 إلى 12 ضلعاً.',
   'The corners are too round for this size: lower the corner radius or widen the box.': 'الزوايا مستديرة أكثر من اللازم لهذا المقاس: قلّل نصف قطر الزوايا أو وسّع الصندوق.',
   'The box is too small for a lid lip. Widen it.': 'الصندوق أصغر من أن يأخذ حلقة غطاء. وسّعه.',

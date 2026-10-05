@@ -17,7 +17,7 @@ import { TilingWorkspace } from './tiling-workspace';
 import { ContourWorkspace } from './contour-workspace';
 import { LetteringWorkspace } from './lettering-workspace';
 import { SheetWorkspace } from './sheet-workspace';
-import { DpiWorkspace, GearWorkspace, HingeWorkspace, PatternWorkspace, PuzzleWorkspace, RulerWorkspace, TagWorkspace, TestCardWorkspace, TrophyWorkspace, PolyBoxWorkspace } from './generator-workspaces';
+import { DpiWorkspace, GearWorkspace, HingeWorkspace, PatternWorkspace, PuzzleWorkspace, RulerWorkspace, TagWorkspace, TestCardWorkspace, TrophyWorkspace, PolyBoxWorkspace, TemplatesWorkspace } from './generator-workspaces';
 import { referenceDrawing, sampleDrawing } from './samples';
 import { download, toDxf, toSvg } from './export';
 import type { Drawing } from './types';
@@ -63,6 +63,7 @@ export default function Toolkit({lang}:{lang:Language}){
   case 'tag':return <TagWorkspace lang={lang} onNest={onNest}/>;
   case 'trophy':return <TrophyWorkspace lang={lang} onNest={onNest}/>;
   case 'polybox':return <PolyBoxWorkspace lang={lang} onNest={onNest}/>;
+  case 'templates':return <TemplatesWorkspace lang={lang} onNest={onNest}/>;
   case 'pattern':return <PatternWorkspace lang={lang} onNest={onNest}/>;
   case 'testcard':return <TestCardWorkspace lang={lang}/>;
   case 'ruler':return <RulerWorkspace lang={lang}/>;

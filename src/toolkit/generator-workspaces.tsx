@@ -11,6 +11,7 @@ import { tx, type Language } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Section, Stat, Toggle, VectorPreview } from './ui';
 import { download } from './export';
 import { defaultPolyBox, polyBoxDrawing, type PolyBoxOptions, type PolyBoxResult } from './polybox';
+import { buildTemplate, TEMPLATES, type TemplateId } from './templates';
 import {
   defaultGear, defaultHinge, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
   centreDistance, gearDrawing, gearGeometry, gearPairDrawing, hingeDrawing, pathStats, patternDrawing, printSize, puzzleDrawing,
@@ -233,6 +234,28 @@ export function TagWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
       </div>
       <NumberField label={tx(lang, 'Largest letter height', 'أقصى ارتفاع للحروف')} value={o.textHeight} onChange={set('textHeight')} min={1.5} step={0.5} unit="mm"/>
       <p className="micro">{tx(lang, 'The text shrinks to fit the tag when it would not fit at this height.', 'يصغر النص تلقائياً ليناسب البطاقة إذا لم يتسع بهذا الارتفاع.')}</p>
+    </Section>
+  </Frame>;
+}
+
+// ——— Product templates ———
+
+export function TemplatesWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Drawing) => void }) {
+  const [id, setId] = useState<TemplateId>('qr');
+  const [values, setValues] = useState<Partial<Record<TemplateId, Record<string, number>>>>({});
+  const template = TEMPLATES.find(t => t.id === id)!, v = values[id] ?? template.defaults;
+  const setValue = (key: string) => (x: number) => setValues(all => ({ ...all, [id]: { ...(all[id] ?? template.defaults), [key]: x } }));
+  const built = useMemo(() => build(() => buildTemplate(id, values[id] ?? TEMPLATES.find(t => t.id === id)!.defaults)), [id, values]);
+  return <Frame lang={lang} built={built} name={`${id}-template`} onNest={onNest}
+    caption={tx(lang, template.en, template.ar)}
+    stats={<Stat label={tx(lang, 'Parts', 'القطع')} value={built.drawing ? built.drawing.shapes.length : '—'}/>}
+    tip={tx(lang, template.noteEn, template.noteAr)}>
+    <Section title={tx(lang, 'Product', 'المنتج')} number="01">
+      <div className="preset-row">{TEMPLATES.map(t => <button key={t.id} type="button" className={t.id === id ? 'selected' : ''} onClick={() => setId(t.id)}>{tx(lang, t.en, t.ar)}</button>)}</div>
+    </Section>
+    <Section title={tx(lang, 'Size', 'المقاس')} number="02">
+      <div className="template-fields">{template.fields.map(f => <NumberField key={f.key} label={tx(lang, f.en, f.ar)} value={v[f.key]} onChange={setValue(f.key)} min={f.min} max={f.max} step={f.step ?? 1} unit={f.unit}/>)}</div>
+      <p className="micro">{tx(lang, 'Slots are the material thickness plus the clearance wide; measure your fit with the kerf test.', 'عرض الفتحات = سماكة الخامة + الخلوص؛ قِس التعشيق المناسب بعينة اختبار الكيرف.')}</p>
     </Section>
   </Frame>;
 }

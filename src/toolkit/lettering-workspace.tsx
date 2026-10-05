@@ -10,8 +10,9 @@ import { builtInFonts, builtInLatin, loadHarfBuzz, shaperFrom, WEIGHTS, type Fon
 import { harfShaper, startWeight, weightNames, type HarfFont } from './harf';
 import { HarfPicker } from './harf-picker';
 import { offsetContours, stencilContours, unionContours } from './vector-ops';
+import { anchorMarks, type AnchorOptions } from './anchor';
 import { circle, roundedRect } from './generators';
-import { moveShape } from './geometry';
+import { bounds, moveShape } from './geometry';
 
 /* Arabic and English lettering as cut paths. Text is shaped by HarfBuzz in
    the browser, with the built-in Tajawal, any font installed on this
@@ -104,7 +105,11 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
   const [holes, setHoles] = useState<0 | 2 | 4>(2);
   const [holeSize, setHoleSize] = useState(5);
   const [textOn, setTextOn] = useState<'engrave' | 'cut' | 'stencil'>('engrave');
-  const [stencil, setStencil] = useState(false), [bridge, setBridge] = useState(1.5);
+  const [bridge, setBridge] = useState(1.5);
+  // Letters cut as pieces keep their dots on; letters cut out of a sheet need stencil bridges instead.
+  const [cutStyle, setCutStyle] = useState<'pieces' | 'stencil'>('pieces');
+  const [keepDots, setKeepDots] = useState(true), [dotMode, setDotMode] = useState<AnchorOptions['mode']>('auto');
+  const [dotDepth, setDotDepth] = useState(15), [dotBridge, setDotBridge] = useState(NaN);
   const [hb, setHb] = useState<typeof HB | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
@@ -157,9 +162,12 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
     } catch { return null; }
   }, [hb, choice, text, lineHeight, wordSpacing, letterSpacing, align]);
 
-  // A stencil plate always needs bridges; loose letters get them when asked.
-  const bridged = stencil || (plate !== 'none' && textOn === 'stencil');
-  const result = useMemo((): { drawing: Drawing | null; parts: number; problem: string; bridges?: number } => {
+  // Whether the letters come off the machine as pieces (then their dots are
+  // kept on) or are cut out of a sheet that stays (then they need bridges).
+  const piecesCut = plate === 'none' ? cutStyle === 'pieces' : plate === 'topper' ? topperOptions.textOn === 'layered' : textOn === 'cut';
+  const bridged = plate === 'none' ? cutStyle === 'stencil' : plate !== 'topper' && textOn === 'stencil';
+  const anchoring = piecesCut && keepDots;
+  const result = useMemo((): { drawing: Drawing | null; parts: number; problem: string; bridges?: number; anchored?: number } => {
     if (!layout) return { drawing: null, parts: 0, problem: '' };
     try {
       const exact = commandLoops(layout.glyphs, 0.4);
@@ -167,24 +175,46 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const loop of exact) for (const p of loop) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y); }
       if (!(size > 0)) throw new Error('Size must be above zero.');
-      const k = size / (fit === 'width' ? x1 - x0 : y1 - y0);
-      const width = (x1 - x0) * k, height = (y1 - y0) * k;
-      const toMm = (p: { x: number; y: number }) => ({ x: mirror ? width - (p.x - x0) * k : (p.x - x0) * k, y: (p.y - y0) * k });
-      // The glyphs again, flattened within 0.005 mm at the final size.
-      const fine = commandLoops(layout.glyphs, 0.005 / k).map(loop => loop.map(toMm));
-      // Welding unions the outlines as vectors and refits them within 0.01 mm;
-      // unwelded outlines keep the font's own, and export fits them.
-      const stenciled = bridged ? stencilContours(fine, bridge) : null;
-      const contours: Contour[] = stenciled ? stenciled.contours : welded ? unionContours(fine) : fine.map(points => ({ closed: true, points }));
+      const outlines = (k: number) => {
+        const w = (x1 - x0) * k;
+        const toMm = (p: { x: number; y: number }) => ({ x: mirror ? w - (p.x - x0) * k : (p.x - x0) * k, y: (p.y - y0) * k });
+        // The glyphs again, flattened within 0.005 mm at the final size.
+        const fine = commandLoops(layout.glyphs, 0.005 / k).map(loop => loop.map(toMm));
+        // Welding unions the outlines as vectors and refits them within 0.01 mm;
+        // unwelded outlines keep the font's own, and export fits them.
+        const stenciled = bridged ? stencilContours(fine, bridge) : null;
+        // Thousandths of an em are the layout's unit, so an em is 1000 of them.
+        const anchored = !stenciled && anchoring ? anchorMarks(fine, { mode: dotMode, depth: dotDepth / 100, bridge: Number.isFinite(dotBridge) ? dotBridge : undefined, em: 1000 * k }) : null;
+        const contours: Contour[] = stenciled ? stenciled.contours : anchored ? anchored.contours : welded ? unionContours(fine) : fine.map(points => ({ closed: true, points }));
+        return { contours, bridges: stenciled?.bridges ?? 0, anchored: anchored?.anchored };
+      };
+      let k = size / (fit === 'width' ? x1 - x0 : y1 - y0);
+      let { contours, bridges, anchored } = outlines(k);
       const byLoop = new Map(contours.map(c => [c.points, c]));
       const groups = groupLoops(contours.map(c => c.points));
-      const shapes: Shape[] = groups.map((group, i) => ({ id: `letter-${i}`, name: `Letter ${i + 1}`, contours: group.map(loop => byLoop.get(loop)!) }));
-      const bridges = stenciled?.bridges ?? 0;
-      if (plate === 'none') return { drawing: { width, height, shapes }, parts: groups.length, problem: '', bridges };
-      if (plate === 'topper') { const t = topper(shapes, width, height, topperOptions); return { drawing: t.drawing, parts: t.parts, problem: t.loose > 0 ? `${t.loose} parts of the topper are not joined to it. Raise the outline thickness.` : '', bridges }; }
-      return { ...withPlate(shapes, width, height, { shape: plate, padding, radius: plateRadius, holes, holeSize, textOn }), problem: '', bridges };
+      let shapes: Shape[] = groups.map((group, i) => ({ id: `letter-${i}`, name: `Letter ${i + 1}`, contours: group.map(loop => byLoop.get(loop)!) }));
+      let width = (x1 - x0) * k, height = (y1 - y0) * k;
+      if (anchored) {
+        // Moved marks change the text's outline, so measure it again and keep the size asked for.
+        const measure = (list: Shape[]) => { let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; for (const s of list) { const r = bounds(s); a = Math.min(a, r.x); b = Math.min(b, r.y); c = Math.max(c, r.x + r.width); d = Math.max(d, r.y + r.height); } return { x: a, y: b, width: c - a, height: d - b }; };
+        let box = measure(shapes);
+        const got = fit === 'width' ? box.width : box.height;
+        if (Math.abs(got - size) > 0.05) {
+          k *= size / got;
+          ({ contours, bridges, anchored } = outlines(k));
+          const again = new Map(contours.map(c => [c.points, c]));
+          shapes = groupLoops(contours.map(c => c.points)).map((group, i) => ({ id: `letter-${i}`, name: `Letter ${i + 1}`, contours: group.map(loop => again.get(loop)!) }));
+          box = measure(shapes);
+        }
+        shapes = shapes.map(s => moveShape(s, -box.x, -box.y));
+        width = box.width; height = box.height;
+      }
+      const parts = shapes.length;
+      if (plate === 'none') return { drawing: { width, height, shapes }, parts, problem: '', bridges, anchored };
+      if (plate === 'topper') { const t = topper(shapes, width, height, topperOptions); return { drawing: t.drawing, parts: t.parts, problem: t.loose > 0 ? `${t.loose} parts of the topper are not joined to it. Raise the outline thickness.` : '', bridges, anchored }; }
+      return { ...withPlate(shapes, width, height, { shape: plate, padding, radius: plateRadius, holes, holeSize, textOn }), problem: '', bridges, anchored };
     } catch (cause) { return { drawing: null, parts: 0, problem: cause instanceof Error ? cause.message : 'Lettering failed.' }; }
-  }, [layout, welded, size, fit, mirror, plate, padding, plateRadius, holes, holeSize, textOn, bridged, bridge, topperOptions]);
+  }, [layout, welded, size, fit, mirror, plate, padding, plateRadius, holes, holeSize, textOn, bridged, bridge, topperOptions, anchoring, dotMode, dotDepth, dotBridge]);
 
   const drawing = result.drawing;
   const name = text.trim().slice(0, 24).replace(/[\\/:*?"<>|\s]+/g, '-') || 'lettering';
@@ -238,9 +268,25 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
         <Section title={tx(lang, 'For cutting', 'للقص')} number="04">
           <Toggle label={tx(lang, 'Weld overlapping letters', 'ادمج الحروف المتداخلة')} value={welded} onChange={setWelded} />
           <Toggle label={tx(lang, 'Mirror (engrave on the back)', 'عكس (للحفر من الخلف)')} value={mirror} onChange={setMirror} />
-          <Toggle label={tx(lang, 'Stencil bridges', 'جسور الاستنسل')} value={bridged} onChange={setStencil} />
+          {plate === 'none' && <div className="ws-choice lt-cut" role="radiogroup" aria-label={tx(lang, 'How the letters are cut', 'كيف تُقصّ الحروف؟')}>
+            <button role="radio" aria-checked={cutStyle === 'pieces'} className={cutStyle === 'pieces' ? 'selected' : ''} onClick={() => setCutStyle('pieces')}><b>{tx(lang, 'Each letter a piece', 'كل حرف قطعة')}</b><span>{tx(lang, 'Acrylic or wood letters to glue on', 'حروف أكريليك أو خشب تُلصق')}</span></button>
+            <button role="radio" aria-checked={cutStyle === 'stencil'} className={cutStyle === 'stencil' ? 'selected' : ''} onClick={() => setCutStyle('stencil')}><b>{tx(lang, 'Cut out of a sheet', 'مفرّغة من لوح')}</b><span>{tx(lang, 'A stencil: the sheet stays, letters are holes', 'استنسل: يبقى اللوح والحروف فراغات')}</span></button>
+          </div>}
+          {piecesCut && <>
+            <Toggle label={tx(lang, 'Keep the dots on their letters', 'ثبّت النقاط على حروفها')} value={keepDots} onChange={setKeepDots} />
+            <p className="micro">{tx(lang, 'Dots, hamzas and vowel marks are small separate pieces that drop through the bed. This joins each one to its letter, so every letter comes off the machine in one piece.', 'النقاط والهمزات والحركات قطع صغيرة منفصلة تسقط من شبكة الماكينة. هذا الخيار يصل كل واحدة منها بحرفها، فيخرج كل حرف من الماكينة قطعة واحدة.')}</p>
+            {keepDots && <>
+              <div className="preset-row" role="radiogroup" aria-label={tx(lang, 'How to join them', 'طريقة التثبيت')}>{([['auto', tx(lang, 'Automatic', 'تلقائي')], ['move', tx(lang, 'Move onto the letter', 'قرّبها حتى تلتصق')], ['bridge', tx(lang, 'Keep in place, bridge', 'مكانها مع جسر')]] as const).map(([id, label]) => <button key={id} role="radio" aria-checked={dotMode === id} className={dotMode === id ? 'selected' : ''} onClick={() => setDotMode(id)}>{label}</button>)}</div>
+              <p className="micro">{dotMode === 'auto' ? tx(lang, 'A dot close to its letter is moved down or up until it sinks into it; one further away keeps its place and gets a short bridge.', 'النقطة القريبة من حرفها تنزل أو تصعد حتى تلتصق به، والبعيدة تبقى مكانها ويصلها جسر قصير.')
+                : dotMode === 'move' ? tx(lang, 'Every mark is moved straight down or up until it sinks into its letter, the way it is done by hand.', 'كل نقطة تنزل أو تصعد مباشرة حتى تلتصق بحرفها، كما تفعل يدوياً.')
+                : tx(lang, 'Every mark stays where the font put it, and a short bridge joins it to its letter.', 'كل نقطة تبقى في مكانها من الخط، ويصلها بحرفها جسر قصير.')}</p>
+              {dotMode !== 'bridge' && <Range label={tx(lang, 'How far a dot sinks in (%)', 'مقدار دخول النقطة في الحرف (٪)')} value={dotDepth} min={5} max={50} onChange={setDotDepth} />}
+              {dotMode !== 'move' && <NumberField label={tx(lang, 'Bridge width', 'عرض الجسر')} value={dotBridge} onChange={setDotBridge} min={0.3} max={20} step={0.1} unit="mm" optional />}
+              {result.anchored !== undefined && <p className="micro lt-anchored">{result.anchored ? tx(lang, `${result.anchored} marks joined to their letters.`, `ثُبّتت ${result.anchored} من النقاط والعلامات على حروفها.`) : tx(lang, 'No loose dots in this text.', 'لا نقاط منفصلة في هذا النص.')}</p>}
+            </>}
+          </>}
           {bridged && <><NumberField label={tx(lang, 'Bridge width', 'عرض الجسر')} value={bridge} onChange={setBridge} min={0.3} max={20} step={0.1} unit="mm" />
-          <p className="micro">{tx(lang, 'Ties the inside of letters such as ه، ص، و and O to the sheet, so nothing falls out when the letters are cut out of it.', 'تربط داخل الحروف مثل ه وص وو وO باللوح، فلا يسقط شيء عند قص الحروف منه.')}{result.bridges ? tx(lang, ` ${result.bridges} bridges.`, ` عدد الجسور: ${result.bridges}.`) : ''}</p></>}
+          <p className="micro">{tx(lang, 'In a stencil the letters are cut out and the sheet is kept. The middles of letters such as ه، ص، و and O would fall out with them, so thin bridges hold each middle to the sheet.', 'في الاستنسل تُفرَّغ الحروف ويبقى اللوح. الجزء الداخلي من حروف مثل ه وص وو وO كان سيسقط معها، فتمسكه جسور رفيعة باللوح.')}{result.bridges ? tx(lang, ` ${result.bridges} bridges.`, ` عدد الجسور: ${result.bridges}.`) : ''}</p></>}
         </Section>
         <Section title={tx(lang, 'Sign plate', 'لوحة حول النص')} number="05">
           <div className="preset-row">{([['none', tx(lang, 'No plate', 'بدون لوحة')], ['rect', tx(lang, 'Rectangle', 'مستطيلة')], ['pill', tx(lang, 'Rounded ends', 'أطراف دائرية')], ['topper', tx(lang, 'Cake topper', 'توبر كيك')]] as const).map(([id, label]) => <button key={id} className={plate === id ? 'selected' : ''} onClick={() => setPlate(id)}>{label}</button>)}</div>

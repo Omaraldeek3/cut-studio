@@ -10,7 +10,7 @@ import { flattenCurve } from './path';
 
 const PRECISION = 4;
 
-function toContours(paths: Point[][], tolerance: number): Contour[] {
+export function toContours(paths: Point[][], tolerance: number): Contour[] {
   return paths.filter(p => p.length >= 3).map(p => {
     const curve = fitPolyline(p, true, tolerance);
     return { closed: true, curve, points: flattenCurve(curve, true, 0.05) };

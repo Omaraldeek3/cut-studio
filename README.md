@@ -13,14 +13,17 @@ Cut Studio is built in and for a signage and laser workshop in Palestine. Every 
 
 **Artwork**
 - **Image to vector.** Colour tracing for print (like Illustrator's Image Trace) and clean outlines for the laser and plotter. Circles come out round and straight edges straight. In cut-out mode every border between two colours is traced once, so nothing is cut twice, and the background is dropped.
-- **AI upscaler.** Real-ESRGAN in the browser, with a print planner (how many pixels a 6 m print needs from 5 m away), a detail test before the long run, a before/after slider and extra sharpness for signs.
-- **Arabic lettering.** Any font on your computer, shaped by HarfBuzz, welded into clean cut paths, with an optional sign plate and mounting holes.
+- **AI upscaler.** Real-ESRGAN in the browser, with a print planner (how many pixels a 6 m print needs from 5 m away), one-click common jobs, a plain explanation of every setting, a sample picture to try it on, a detail test before the long run, a before/after slider and extra sharpness for signs.
+- **Arabic lettering.** The 231 free Arabic fonts of [Harf](https://harf.omardeek.tech), any font on your computer or a font file, shaped by HarfBuzz and welded into clean cut paths. Letters cut as pieces keep their dots on: every dot, hamza and vowel mark is moved onto its letter or bridged to it, so each letter comes off the machine in one piece. Stencils get bridges instead; sign plates, mounting holes and cake toppers too.
 - **Contour & offset.** Round-cornered offsets for acrylic letter bases, weeding borders and print-and-cut sticker lines.
 - **Vector cleanup.** Repairs any SVG, DXF or CorelDRAW file for cutting: removes overlapping lines (Delete Overlap), joins small gaps and cuts thousands of nodes down to lines and arcs.
 - **Resize & repeat.**
 
 **Laser & CNC**
-- **Material nesting**, **box maker** (finger joints, lids, sliding lids, drawers, dividers, 3D view), **gear maker** (involute gears, meshing pairs, turning 3D view), **living hinge**, **jigsaw puzzle**, **keychains & tags** (Arabic text, any shape), **grille patterns**, **engraving prep** (eight dithering methods), **power & speed test card** (one colour layer per square, settings as CSV), **fit test**, **ruler maker**.
+- **Material nesting**, **box maker** (finger joints, lids, sliding lids, drawers, dividers, 3D view), **living hinge**, **grille patterns**, **engraving prep** (eight dithering methods), **power & speed test card** (one colour layer per square, settings as CSV), **fit test**, **CNC prep** and **feeds & speeds**.
+
+**Ready-made**
+- **Product templates** (QR stand, phone stand, menu holder, door sign, gift box, desk organizer and more), **polygon box**, **keychains & tags** (Arabic text, any shape), **trophy base**, **gear maker** (involute gears, meshing pairs, turning 3D view), **jigsaw puzzle**, **ruler maker**, and a link to [Shakl](https://shakl.omardeek.tech) for 3D models.
 
 **Print**
 - **Poster tiling** into printer-width panels with overlap and eyelet marks, **print sheets** for stickers, labels and sublimation, and a **DPI calculator**.

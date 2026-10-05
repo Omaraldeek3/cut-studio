@@ -22,7 +22,7 @@ const FIELDS: Record<string, string> = {
   'Second gear teeth': 'أسنان الترس الثاني', 'Sheet height': 'ارتفاع اللوح', 'Sheet price': 'سعر اللوح', 'Sheet width': 'عرض اللوح', Sheets: 'الألواح',
   'Simplify tolerance': 'انحراف التبسيط', 'Slit length': 'طول الشق', Slots: 'الفتحات', Smoothing: 'التنعيم', Spacing: 'التباعد',
   'Square size': 'مقاس المربع', Step: 'الخطوة', 'Tab size': 'مقاس اللسان', 'Text height': 'ارتفاع النص', Threshold: 'العتبة',
-  'Travel allowance': 'زمن التنقل', Finishing: 'التشطيب', 'Minimum price': 'الحد الأدنى للسعر', Wall: 'الجدار', Width: 'العرض', 'Image width': 'عرض الصورة', 'Image height': 'ارتفاع الصورة',
+  'Travel allowance': 'زمن التنقل', Flutes: 'عدد الحدود', 'Lowest spindle speed': 'أدنى سرعة دوران', 'Highest spindle speed': 'أعلى سرعة دوران', 'Highest feed rate': 'أعلى سرعة تغذية', 'Chip load': 'سماكة الرايش', 'Bit diameter': 'قطر الريشة', Finishing: 'التشطيب', 'Minimum price': 'الحد الأدنى للسعر', Wall: 'الجدار', Width: 'العرض', 'Image width': 'عرض الصورة', 'Image height': 'ارتفاع الصورة',
 };
 const field = (name: string) => FIELDS[name] ?? name;
 
@@ -186,6 +186,7 @@ const EXACT: Record<string, string> = {
   'This image could not be opened. Very large files may need to be saved as JPEG first.': 'تعذّر فتح الصورة. الملفات الكبيرة جداً قد تحتاج حفظها بصيغة JPEG أولاً.',
   'This image could not be opened.': 'تعذّر فتح الصورة.',
   'Upscaling failed.': 'تعذّر تكبير الصورة.',
+  'Flutes must be a whole number.': 'عدد الحدود يجب أن يكون عدداً صحيحاً.',
   'Bit diameter must be between 0 and 50 mm.': 'قطر الريشة يجب أن يكون بين 0 و50 مم.',
   'Corner angle must be between 60 and 179 degrees.': 'زاوية الركن يجب أن تكون بين 60 و179 درجة.',
   'Use 0 to 12 tabs per part.': 'استخدم من 0 إلى 12 جسراً لكل قطعة.',

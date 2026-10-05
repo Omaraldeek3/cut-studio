@@ -7,6 +7,7 @@ import { Icon } from './ui';
 import { NestWorkspace, EditWorkspace, KerfWorkspace } from './vector-workspaces';
 import { QuoteWorkspace } from './quote-workspace';
 import { CncWorkspace } from './cnc-workspace';
+import { FeedsWorkspace } from './feeds-workspace';
 import type { NestedJob } from './quote';
 import { BoxWorkspace } from './box-workspace';
 import { EngraveWorkspace } from './engrave-workspace';
@@ -53,6 +54,7 @@ export default function Toolkit({lang}:{lang:Language}){
   case 'quote':return <QuoteWorkspace {...props} job={job&&job.drawing===drawing?job:null}/>;
   case 'kerf':return <KerfWorkspace lang={lang}/>;
   case 'cnc':return <CncWorkspace {...props}/>;
+  case 'feeds':return <FeedsWorkspace lang={lang}/>;
   case 'engrave':return <EngraveWorkspace lang={lang}/>;
   case 'box':return <BoxWorkspace lang={lang} onNest={onNest}/>;
   case 'hinge':return <HingeWorkspace lang={lang} onNest={onNest}/>;

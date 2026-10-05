@@ -11,6 +11,7 @@ const drawings: [string, () => Drawing][] = [
   ['gear', () => g.gearDrawing(g.defaultGear)],
   ['puzzle', () => g.puzzleDrawing(g.defaultPuzzle)],
   ['tag', () => g.tagDrawing(g.defaultTag)],
+  ...(['arch', 'rounded', 'square'] as const).map((plateTop): [string, () => Drawing] => [`trophy ${plateTop}`, () => g.trophyDrawing({ ...g.defaultTrophy, plateTop })]),
   ...(['hex', 'circle', 'slot', 'diamond'] as const).map((kind): [string, () => Drawing] => [`pattern-${kind}`, () => g.patternDrawing({ ...g.defaultPattern, kind })]),
   ['test card', () => g.testCardDrawing(g.defaultTestCard)],
   ['ruler', () => g.rulerDrawing(g.defaultRuler)],

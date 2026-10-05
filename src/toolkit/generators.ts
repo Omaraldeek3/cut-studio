@@ -110,6 +110,49 @@ export function hingeDrawing(o: HingeOptions): Drawing {
   return { width: o.width, height: o.height, shapes: [shape('panel', 'Hinge panel', [closed(roundedRect(0, 0, o.width, o.height, o.radius)), ...slits])] };
 }
 
+// ——— Trophy base ———
+
+/** A stacked base: the top `slotLayers` layers have a slot that holds an
+ *  acrylic plate upright, the layers beneath are solid. Sizes in mm. */
+export type TrophyOptions = {
+  width: number; depth: number; radius: number;
+  layers: number; slotLayers: number; thickness: number;
+  plateWidth: number; plateHeight: number; plateThickness: number; clearance: number;
+  /** Slot centre from the base's back edge. */
+  slotFromBack: number;
+  plateTop: 'square' | 'rounded' | 'arch';
+};
+export const defaultTrophy: TrophyOptions = { width: 160, depth: 70, radius: 6, layers: 3, slotLayers: 2, thickness: 6, plateWidth: 130, plateHeight: 180, plateThickness: 5, clearance: 0.2, slotFromBack: 28, plateTop: 'arch' };
+
+export function trophyDrawing(o: TrophyOptions): Drawing & { slot: { length: number; width: number; depth: number } } {
+  check(o.width, 30, 1000, 'Width'); check(o.depth, 20, 600, 'Depth'); check(o.radius, 0, 100, 'Corner radius');
+  check(o.thickness, 1, 30, 'Material thickness'); check(o.plateThickness, 1, 20, 'Plate thickness'); check(o.clearance, 0, 2, 'Clearance');
+  check(o.plateWidth, 10, o.width - 10, 'Plate width'); check(o.plateHeight, 20, 2000, 'Plate height');
+  if (!Number.isInteger(o.layers) || !Number.isInteger(o.slotLayers) || o.layers < 1 || o.layers > 10 || o.slotLayers < 1 || o.slotLayers > o.layers) throw new Error('Use 1 to 10 layers, with the slot through 1 of them up to all.');
+  const slotLength = o.plateWidth + o.clearance, slotWidth = o.plateThickness + o.clearance, depthIn = o.slotLayers * o.thickness;
+  check(o.slotFromBack, slotWidth / 2 + 3, o.depth - slotWidth / 2 - 3, 'Slot position');
+  const gap = 6, outline = () => closed(roundedRect(0, 0, o.width, o.depth, o.radius));
+  const slot = closed(roundedRect((o.width - slotLength) / 2, o.slotFromBack - slotWidth / 2, slotLength, slotWidth, 0));
+  const shapes: Shape[] = [];
+  for (let i = 0; i < o.layers; i++) {
+    const top = i < o.slotLayers;
+    shapes.push(moveShape(shape(`layer-${i + 1}`, top ? `Slotted layer ${i + 1}` : `Solid layer ${i + 1}`, top ? [outline(), slot] : [outline()]), 0, i * (o.depth + gap)));
+  }
+  // The plate: its full height, including the part that sits in the slot.
+  const w = o.plateWidth, h = o.plateHeight, y0 = o.layers * (o.depth + gap);
+  let plate: Point[];
+  if (o.plateTop === 'arch') {
+    const r = w / 2, rise = Math.min(r, h - depthIn - 5);
+    if (rise <= 0) throw new Error('The plate is too short for its arch. Make it taller.');
+    // An even count puts a point at the very top, so the plate is its full height.
+    const n = 2 * Math.ceil(arcSegments(r, Math.PI) / 2);
+    // A half-ellipse across the top, as tall as the plate allows.
+    plate = [{ x: 0, y: h }, { x: w, y: h }, ...Array.from({ length: n + 1 }, (_, k) => { const a = (k / n) * Math.PI; return { x: w / 2 + r * Math.cos(a), y: rise - rise * Math.sin(a) }; })];
+  } else plate = o.plateTop === 'rounded' ? roundedRect(0, 0, w, h, Math.min(12, w / 4)) : roundedRect(0, 0, w, h, 0);
+  shapes.push(shape('plate', 'Acrylic plate', [closed(plate.map(p => ({ x: p.x + (o.width - w) / 2, y: p.y + y0 })))]));
+  return { width: o.width, height: y0 + h, shapes, slot: { length: slotLength, width: slotWidth, depth: depthIn } };
+}
+
 // ——— Spur gear ———
 
 export type GearOptions = { teeth: number; module: number; pressure: number; bore: number; clearance: number };

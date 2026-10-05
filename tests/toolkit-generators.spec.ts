@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import {
   defaultGear, defaultHinge, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
   centreDistance, gearDrawing, gearGeometry, gearPairDrawing, hingeDrawing, jobEstimate, patternDrawing, printSize, puzzleDrawing, resolution,
-  rulerDrawing, steps, tagBatch, tagDrawing, testCardDrawing, defaultJob,
+  rulerDrawing, steps, tagBatch, tagDrawing, testCardDrawing, trophyDrawing, defaultTrophy, defaultJob,
 } from "../src/toolkit/generators";
 import { toDxf, toSvg } from "../src/toolkit/export";
 import type { Drawing } from "../src/toolkit/types";
@@ -160,4 +160,18 @@ test("a tag batch makes one tag per line, each its own part, in a grid", () => {
   expect(d.width).toBe(123); expect(d.height).toBe(63);
   expect(() => tagBatch(defaultTag, ["OK", "THIS NAME IS FAR TOO LONG FOR A SIXTY MILLIMETRE TAG"])).toThrow(/do not fit the tag: THIS NAME/);
   expect(() => tagBatch(defaultTag, ["", "  "])).toThrow(/at least one name/);
+});
+
+test("a trophy base has slotted layers on top, solid ones beneath, and a plate that fits the slot", () => {
+  const d = trophyDrawing({ ...defaultTrophy, layers: 3, slotLayers: 2, thickness: 6, plateWidth: 130, plateThickness: 5, clearance: 0.2 });
+  expect(d.shapes.map(s => s.contours.length)).toEqual([2, 2, 1, 1]);
+  expect(d.slot).toEqual({ length: 130.2, width: 5.2, depth: 12 });
+  const slot = d.shapes[0].contours[1].points, xs = slot.map(p => p.x), ys = slot.map(p => p.y);
+  expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(130.2, 6);
+  expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(5.2, 6);
+  const plate = d.shapes[3].contours[0].points;
+  expect(Math.max(...plate.map(p => p.x)) - Math.min(...plate.map(p => p.x))).toBeCloseTo(130, 6);
+  expect(Math.max(...plate.map(p => p.y)) - Math.min(...plate.map(p => p.y))).toBeCloseTo(defaultTrophy.plateHeight, 6);
+  expect(() => trophyDrawing({ ...defaultTrophy, slotLayers: 4, layers: 3 })).toThrow(/1 to 10 layers/);
+  expect(() => trophyDrawing({ ...defaultTrophy, plateWidth: 158 })).toThrow(/Plate width/);
 });

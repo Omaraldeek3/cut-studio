@@ -154,3 +154,12 @@ test("image to vector offers job presets and warns about details too small to cu
   await expect(page.getByText(/shapes or holes are smaller than/)).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("the trophy base maker draws its layers and plate", async ({ page }) => {
+  const errors = await openTool(page, "Trophy base");
+  await expect(page.locator(".stat").filter({ hasText: "Slot" }).first()).toContainText("130.2 × 5.2");
+  await page.getByLabel("Plate thickness").fill("3");
+  await expect(page.locator(".stat").filter({ hasText: "Slot" }).first()).toContainText("130.2 × 3.2");
+  await expect(page.getByRole("button", { name: "Export DXF", exact: true })).toBeEnabled();
+  expect(errors).toEqual([]);
+});

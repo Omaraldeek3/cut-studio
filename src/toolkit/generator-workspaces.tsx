@@ -13,7 +13,7 @@ import { download } from './export';
 import {
   defaultGear, defaultHinge, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
   centreDistance, gearDrawing, gearGeometry, gearPairDrawing, hingeDrawing, pathStats, patternDrawing, printSize, puzzleDrawing,
-  resolution, rulerDrawing, steps, tagBatch, tagDrawing, testCardDrawing, MAX_TAG_BATCH, MAX_TEST_SQUARES,
+  resolution, rulerDrawing, steps, tagBatch, tagDrawing, testCardDrawing, trophyDrawing, defaultTrophy, MAX_TAG_BATCH, MAX_TEST_SQUARES, type TrophyOptions,
   type GearOptions, type HingeOptions, type PatternKind, type PatternOptions, type PuzzleOptions,
   type RulerOptions, type TagOptions, type TagShape, type TestCardOptions,
 } from './generators';
@@ -232,6 +232,32 @@ export function TagWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
       </div>
       <NumberField label={tx(lang, 'Largest letter height', 'أقصى ارتفاع للحروف')} value={o.textHeight} onChange={set('textHeight')} min={1.5} step={0.5} unit="mm"/>
       <p className="micro">{tx(lang, 'The text shrinks to fit the tag when it would not fit at this height.', 'يصغر النص تلقائياً ليناسب البطاقة إذا لم يتسع بهذا الارتفاع.')}</p>
+    </Section>
+  </Frame>;
+}
+
+// ——— Trophy base ———
+
+export function TrophyWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Drawing) => void }) {
+  const [o, set] = useOptions<TrophyOptions>(defaultTrophy);
+  const built = useMemo(() => build(() => trophyDrawing(o)), [o]);
+  const slot = built.drawing ? (built.drawing as ReturnType<typeof trophyDrawing>).slot : null;
+  const tops: [TrophyOptions['plateTop'], string][] = [['arch', tx(lang, 'Arched top', 'قوس علوي')], ['rounded', tx(lang, 'Rounded corners', 'زوايا دائرية')], ['square', tx(lang, 'Square', 'مستطيل')]];
+  return <Frame lang={lang} built={built} name={`trophy-base-${o.width}x${o.depth}`} onNest={onNest}
+    caption={tx(lang, 'Base layers, top first, and the acrylic plate', 'طبقات القاعدة من الأعلى، ولوح الأكريليك')}
+    stats={<><Stat label={tx(lang, 'Slot', 'المجرى')} value={slot ? `${slot.length.toFixed(1)} × ${slot.width.toFixed(1)}` : '—'} unit="mm"/><Stat label={tx(lang, 'Plate sits in', 'عمق تثبيت اللوح')} value={slot ? slot.depth.toFixed(1) : '—'} unit="mm"/></>}
+    tip={tx(lang, 'Cut the layers from the base material and glue them in order, slotted layers on top. Cut the plate from acrylic: its height includes the part that sits in the slot. Engrave the plate before taking off its film.', 'اقصص الطبقات من خامة القاعدة والصقها بالترتيب، والطبقات ذات المجرى في الأعلى. اقصص اللوح من الأكريليك: ارتفاعه يشمل الجزء الذي يدخل المجرى. احفر اللوح قبل نزع طبقة الحماية.')}>
+    <Section title={tx(lang, 'Base', 'القاعدة')} number="01">
+      <div className="field-pair"><NumberField label={tx(lang, 'Width', 'العرض')} value={o.width} onChange={set('width')} min={30} max={1000} unit="mm"/><NumberField label={tx(lang, 'Depth', 'العمق')} value={o.depth} onChange={set('depth')} min={20} max={600} unit="mm"/></div>
+      <div className="field-pair"><NumberField label={tx(lang, 'Layers', 'الطبقات')} value={o.layers} onChange={set('layers')} min={1} max={10}/><NumberField label={tx(lang, 'Slotted layers', 'طبقات المجرى')} value={o.slotLayers} onChange={set('slotLayers')} min={1} max={10}/></div>
+      <div className="field-pair"><NumberField label={tx(lang, 'Material thickness', 'سماكة الخامة')} value={o.thickness} onChange={set('thickness')} min={1} max={30} step={0.5} unit="mm"/><NumberField label={tx(lang, 'Corner radius', 'نصف قطر الزوايا')} value={o.radius} onChange={set('radius')} max={100} unit="mm"/></div>
+    </Section>
+    <Section title={tx(lang, 'Acrylic plate', 'لوح الأكريليك')} number="02">
+      <div className="field-pair"><NumberField label={tx(lang, 'Plate width', 'عرض اللوح')} value={o.plateWidth} onChange={set('plateWidth')} min={10} unit="mm"/><NumberField label={tx(lang, 'Plate height', 'ارتفاع اللوح')} value={o.plateHeight} onChange={set('plateHeight')} min={20} max={2000} unit="mm"/></div>
+      <div className="field-pair"><NumberField label={tx(lang, 'Plate thickness', 'سماكة اللوح')} value={o.plateThickness} onChange={set('plateThickness')} min={1} max={20} step={0.5} unit="mm"/><NumberField label={tx(lang, 'Clearance', 'الخلوص')} value={o.clearance} onChange={set('clearance')} max={2} step={0.05} unit="mm"/></div>
+      <NumberField label={tx(lang, 'Slot from the back edge', 'المجرى من الحافة الخلفية')} value={o.slotFromBack} onChange={set('slotFromBack')} step={0.5} unit="mm"/>
+      <Choice label={tx(lang, 'Top of the plate', 'أعلى اللوح')} value={o.plateTop} options={tops} onChange={set('plateTop')}/>
+      <p className="micro">{tx(lang, 'Clearance is added to the slot. 0.2 mm suits most lasers; measure it with the fit test coupon.', 'يضاف الخلوص إلى المجرى. ٠٫٢ مم يناسب أغلب الليزرات، ويمكن قياسه بعينة اختبار التعشيق.')}</p>
     </Section>
   </Frame>;
 }

@@ -44,6 +44,24 @@ test("the AI upscaler enlarges a picture and saves a JPEG with its size", async 
   expect(errors).toEqual([]);
 });
 
+test("the AI upscaler says what it is for and plans a job in one click", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/en/ai-image-upscaler");
+  await expect(page.getByRole("heading", { name: "What this tool is for" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Image to vector" }).last()).toHaveAttribute("href", "/en/image-to-vector");
+  await page.getByRole("button", { name: "Try it on a sample picture" }).click();
+  await expect(page.getByText("sample-photo", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "A2 poster from a phone photo" }).click();
+  await expect(page.getByLabel("Print width")).toHaveValue("42");
+  await expect(page.locator(".up-verdict")).toContainText("at 42 cm wide");
+  await page.getByText("Which one do I choose?").click();
+  await expect(page.getByText(/came through WhatsApp/)).toBeVisible();
+  await page.goto("/ar/ai-image-upscaler");
+  await expect(page.getByRole("heading", { name: "متى أستخدم هذه الأداة؟" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("a small picture is cleaned up by the AI before it is traced", async ({ page }) => {
   test.setTimeout(240_000);
   const errors = await openTool(page, "Image to vector");

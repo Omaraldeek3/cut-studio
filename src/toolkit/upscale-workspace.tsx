@@ -1,8 +1,9 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import type { Raster } from './image';
-import { tx, type Language } from './copy';
-import { ErrorNote, Icon, NumberField, Range, Section, Stat, Toggle } from './ui';
+import { slugs, tx, type Language } from './copy';
+import { ErrorNote, Help, Icon, NumberField, Range, Section, Stat, Toggle } from './ui';
 import { bytes, decodeImage, ImageDrop, IMAGE_TYPES, saveFile, usePastedImage } from './image-input';
 import { planPrint } from './upscale-core';
 import type { UpscaleModel, WorkerRequest } from './upscale.worker';
@@ -31,6 +32,15 @@ const distances = [
   { m: 3, en: 'Indoor sign · 3 m', ar: 'لافتة داخلية · ٣ م' },
   { m: 5, en: 'Shop front · 5 m', ar: 'واجهة محل · ٥ م' },
   { m: 12, en: 'Billboard · 12 m', ar: 'لوحة طرق · ١٢ م' },
+];
+
+/** Jobs a print shop gets every week, each setting the picture type, the
+ *  print width and the distance in one click. */
+const jobs: { en: string; ar: string; model: UpscaleModel; width: number; distance: number }[] = [
+  { en: 'Shop front from a WhatsApp photo', ar: 'واجهة محل من صورة واتساب', model: 'general-wdn', width: 400, distance: 5 },
+  { en: 'A2 poster from a phone photo', ar: 'بوستر A2 من صورة جوال', model: 'general', width: 42, distance: 1 },
+  { en: 'Roll-up with a small logo', ar: 'رول أب بشعار صغير', model: 'graphics', width: 85, distance: 3 },
+  { en: 'Billboard', ar: 'لوحة طرق', model: 'general', width: 600, distance: 12 },
 ];
 
 function CropCanvas({ raster, crop, scale, smooth, label }: { raster: Raster; crop: { x: number; y: number; width: number; height: number }; scale: number; smooth: boolean; label: string }) {
@@ -200,6 +210,26 @@ export function UpscaleWorkspace({ lang }: { lang: Language }) {
 
   const cancel = () => { reset(); setRunning(false); setProbing(false); setProgress(null); };
 
+  /** One click for a common job: the picture type, the size and the distance,
+   *  and, once a picture is in, the enlargement the planner works out. */
+  const applyJob = (job: typeof jobs[number]) => {
+    setModel(job.model); setProbe(null); setPrintWidth(job.width); setDistance(job.distance);
+    if (source) setScale(Math.min(8, Math.max(1, Math.ceil(planPrint(source.raster.width, source.raster.height, job.width, job.distance).scale * 10) / 10)));
+  };
+
+  /** A photo shrunk and squeezed the way pictures arrive from clients, so the
+   *  tool can be tried before there is a picture of one's own. */
+  const trySample = async () => {
+    try {
+      const bitmap = await createImageBitmap(await (await fetch('/images/coffee.jpg')).blob());
+      const canvas = document.createElement('canvas');
+      canvas.width = 360; canvas.height = Math.round((360 * bitmap.height) / bitmap.width);
+      canvas.getContext('2d')?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>(done => canvas.toBlob(done, 'image/jpeg', 0.55));
+      if (blob) await load(new File([blob], 'sample-photo.jpg', { type: 'image/jpeg' }));
+    } catch { setError(tx(lang, 'The sample picture could not be loaded.', 'تعذّر تحميل الصورة النموذجية.')); }
+  };
+
   const pick = (event: React.MouseEvent<HTMLButtonElement>) => {
     const image = event.currentTarget.querySelector('img');
     if (!source || !image) return;
@@ -240,9 +270,19 @@ export function UpscaleWorkspace({ lang }: { lang: Language }) {
               </button>
             ))}
           </div>
+          <Help lang={lang} label={tx(lang, 'Which one do I choose?', 'أيّها أختار؟')}>
+            <p><b>{tx(lang, 'Photo', 'صورة فوتوغرافية')}</b>: {tx(lang, 'taken with a camera or a phone, and clean when you zoom in. Skin, fabric and backgrounds stay natural.', 'من كاميرا أو جوال، ونظيفة عند تقريبها. يبقى الجلد والقماش والخلفيات طبيعية.')}</p>
+            <p><b>{tx(lang, 'Low-quality photo', 'صورة ضعيفة الجودة')}</b>: {tx(lang, 'it came through WhatsApp or Facebook, or was saved many times, and shows small squares and noise. The AI cleans it first, then enlarges it.', 'وصلتك عبر واتساب أو فيسبوك، أو حُفظت مرات كثيرة، فظهرت فيها مربعات صغيرة وتشويش. ينظفها الذكاء الاصطناعي أولاً ثم يكبّرها.')}</p>
+            <p><b>{tx(lang, 'Graphics & logos', 'رسومات وشعارات')}</b>: {tx(lang, 'a logo, a cartoon, a screenshot, or a design with writing. Edges stay crisp and colours stay flat.', 'شعار أو رسم كرتوني أو لقطة شاشة أو تصميم فيه كتابة. تبقى الحواف حادة والألوان مسطحة.')}</p>
+            <p>{tx(lang, 'Not sure? Choose Photo, then click the picture to see a piece of the result before the whole enlargement.', 'لست متأكداً؟ اختر "صورة فوتوغرافية"، ثم اضغط على الصورة لترى جزءاً من النتيجة قبل التكبير الكامل.')}</p>
+          </Help>
         </Section>
 
-        <Section title={tx(lang, 'Print planner', 'مخطط الطباعة')} number="03">
+        <Section title={tx(lang, 'Print size and distance', 'مقاس الطباعة والمسافة')} number="03">
+          <p className="micro">{tx(lang, 'Type how wide you will print it and where people will stand. The tool works out how much to enlarge.', 'اكتب عرض الطباعة واختر من أين سيراها الناس، والأداة تحسب لك كم تحتاج من تكبير.')}</p>
+          <div className="job-row" role="group" aria-label={tx(lang, 'Common jobs', 'مهام شائعة')}>
+            {jobs.map(job => <button key={job.en} type="button" disabled={running} onClick={() => applyJob(job)}>{tx(lang, job.en, job.ar)}</button>)}
+          </div>
           <NumberField label={tx(lang, 'Print width', 'عرض الطباعة')} value={printWidth} onChange={setPrintWidth} min={1} max={10000} unit="cm" />
           <label className="field"><span>{tx(lang, 'Seen from', 'يُشاهَد من مسافة')}</span>
             <select value={distance} onChange={e => setDistance(+e.target.value)}>
@@ -258,12 +298,23 @@ export function UpscaleWorkspace({ lang }: { lang: Language }) {
                 ? <button className="text-button" onClick={() => setScale(Math.min(8, Math.ceil(plan.scale * 10) / 10))}>{tx(lang, `Use ${Math.min(8, Math.ceil(plan.scale * 10) / 10)}× enlargement`, `استخدم تكبير ${Math.min(8, Math.ceil(plan.scale * 10) / 10)}×`)}</button>
                 : <b>{tx(lang, `It needs ${plan.scale.toFixed(1)}×. 8× here is the most that still looks natural; stand-off distance hides the rest.`, `تحتاج ${plan.scale.toFixed(1)}×. تكبير ٨× هنا أقصى ما يبقى طبيعياً، والمسافة تُخفي الباقي.`)}</b>}
           </div>}
+          <Help lang={lang} label={tx(lang, 'Why does the distance matter?', 'لماذا تهمّ المسافة؟')}>
+            <p>{tx(lang, 'DPI is how many pixels fall in each inch (2.54 cm) of the print. Up close the eye sees fine detail, so a poster held in the hand needs about 150 DPI or more. From far away it cannot: a shop front seen from 5 m looks just as sharp at about 30 DPI.', 'الـDPI هو عدد البكسلات في كل إنش (٢٫٥٤ سم) من الطباعة. من قريب ترى العين التفاصيل الدقيقة، فالبوستر الذي يُمسك باليد يحتاج نحو ١٥٠ DPI أو أكثر. ومن بعيد لا تراها، فواجهة محل تُرى من ٥ أمتار تبدو بالحدة نفسها بنحو ٣٠ DPI.')}</p>
+            <p>{tx(lang, 'So a big print does not always need a huge file. Enlarging past what the distance needs only makes the file heavier.', 'لذلك لا تحتاج الطباعة الكبيرة دائماً إلى ملف ضخم، والتكبير فوق ما تحتاجه المسافة يثقل الملف فقط.')}</p>
+          </Help>
         </Section>
 
-        <Section title={tx(lang, 'Enlargement', 'التكبير')} number="04">
+        <Section title={tx(lang, 'How much to enlarge', 'كم مرة تُكبَّر؟')} number="04">
           <div className="preset-row">{[2, 3, 4, 6, 8].map(value => <button key={value} className={scale === value ? 'selected' : ''} onClick={() => setScale(value)} dir="ltr">{value}×</button>)}</div>
           <NumberField label={tx(lang, 'Factor', 'المعامل')} value={scale} onChange={setScale} min={1} max={8} step={0.1} unit="×" />
+          <p className="micro">{source && validScale
+            ? tx(lang, `${scale}× makes every side ${scale} times longer: ${source.raster.width} × ${source.raster.height} px becomes ${outW} × ${outH} px.`, `${scale}× يعني أن كل جانب يصبح أطول ${scale} مرات: ${source.raster.width} × ${source.raster.height} بكسل تصبح ${outW} × ${outH} بكسل.`)
+            : tx(lang, '4× makes every side four times longer: a picture 1000 px wide becomes 4000 px wide.', '٤× يعني أن كل جانب يصبح أطول ٤ مرات: صورة عرضها ١٠٠٠ بكسل تصبح ٤٠٠٠ بكسل.')}</p>
           {scale > 4 && <p className="micro">{tx(lang, 'The AI draws detail up to 4×; the rest is a smooth enlargement of its result.', 'الذكاء الاصطناعي يرسم التفاصيل حتى ٤×؛ ما بعدها تكبير ناعم لنتيجته.')}</p>}
+          <Help lang={lang}>
+            <p>{tx(lang, 'Up to 4×, the AI draws in new detail. Past 4×, its result is enlarged smoothly, so 6× and 8× add size, not detail.', 'حتى ٤× يرسم الذكاء الاصطناعي تفاصيل جديدة. بعد ٤× تُكبَّر نتيجته تكبيراً ناعماً، فالـ٦× والـ٨× تزيد المقاس لا التفاصيل.')}</p>
+            <p>{tx(lang, 'A bigger factor takes longer and makes a heavier file: twice the factor is four times the pixels.', 'المعامل الأكبر يحتاج وقتاً أطول ويعطي ملفاً أثقل: ضعف المعامل يعني أربعة أضعاف البكسلات.')}</p>
+          </Help>
           <Range label={tx(lang, 'Extra sharpness', 'حدّة إضافية')} value={sharpen} min={0} max={100} onChange={setSharpen} />
           <p className="micro">{tx(lang, 'Leave at 0 for photos of people. Raise it for text, logos and signs that will be seen from far away.', 'اتركها على ٠ لصور الأشخاص. ارفعها للنصوص والشعارات واللافتات التي تُرى من بعيد.')}</p>
           <label className="field"><span>{tx(lang, 'File', 'الملف')}</span>
@@ -272,10 +323,16 @@ export function UpscaleWorkspace({ lang }: { lang: Language }) {
               <option value="png">{tx(lang, 'PNG · lossless, keeps transparency', 'PNG · بلا فقد ويحفظ الشفافية')}</option>
             </select>
           </label>
+          <p className="micro">{tx(lang, 'JPEG for printing: a much smaller file. PNG when the picture has a transparent background or you will edit it again.', 'JPEG للطباعة: ملف أصغر بكثير. PNG إن كانت للصورة خلفية شفافة أو ستعدّلها مرة أخرى.')}</p>
           {format === 'jpeg' && <Range label={tx(lang, 'JPEG quality', 'جودة JPEG')} value={quality} min={70} max={100} onChange={setQuality} />}
           <Toggle label={tx(lang, 'Use the graphics card', 'استخدم كرت الشاشة')} value={gpu} onChange={value => { setGpu(value); modelKey.current = ''; }} />
+          <p className="micro">{tx(lang, 'Much faster on most computers. If the result has odd colours or the browser stops responding, turn it off: the processor is slower but always works.', 'أسرع بكثير على أغلب الأجهزة. إن ظهرت ألوان غريبة أو توقف المتصفح عن الاستجابة فأطفئه: المعالج أبطأ لكنه يعمل دائماً.')}</p>
         </Section>
         <div className="control-action">
+          {source && plan && validScale && <div className={`up-verdict ${dpi >= plan.dpi * 0.95 ? 'ok' : 'low'}`}>
+            <b>{dpi >= plan.dpi * 0.95 ? tx(lang, `Sharp from ${distance} m`, `حادة من مسافة ${distance} م`) : tx(lang, `It will look soft from ${distance} m`, `ستبدو باهتة من مسافة ${distance} م`)}</b>
+            <span>{tx(lang, `${outW} × ${outH} px gives ${Math.round(dpi)} DPI at ${printWidth} cm wide; ${plan.dpi} DPI is enough from there.`, `${outW} × ${outH} بكسل تعطي ${Math.round(dpi)} DPI بعرض ${printWidth} سم، ويكفي ${plan.dpi} DPI من هذه المسافة.`)}</span>
+          </div>}
           <button className="button primary wide" disabled={!source || running || !validScale || tooBig} onClick={start}>{running ? tx(lang, 'Enlarging…', 'جارٍ التكبير…') : tx(lang, 'Enlarge and save', 'كبّر واحفظ')}<Icon name="arrow" size={18} /></button>
           {running && <button className="text-button" onClick={cancel}>{tx(lang, 'Cancel', 'إلغاء')}</button>}
           {tooBig && <p className="micro">{tx(lang, 'The result would pass 65,535 px on a side. Lower the factor.', 'سيتجاوز الناتج ٦٥٥٣٥ بكسل في أحد جانبيه. خفّض المعامل.')}</p>}
@@ -293,6 +350,17 @@ export function UpscaleWorkspace({ lang }: { lang: Language }) {
           <span className="micro">{backend === 'webgpu' ? tx(lang, 'Running on the graphics card', 'يعمل على كرت الشاشة') : backend === 'wasm' ? tx(lang, 'Running on the processor (slower)', 'يعمل على المعالج (أبطأ)') : tx(lang, 'Processed on this computer', 'المعالجة على هذا الجهاز')}</span>
         </div>
 
+        {!source && <div className="up-intro">
+          <div>
+            <h2>{tx(lang, 'What this tool is for', 'متى أستخدم هذه الأداة؟')}</h2>
+            <p>{tx(lang, 'It makes a small picture big enough to print large, such as a shop front, a banner or a poster, without blocks or blur. The AI does not just stretch the pixels: it draws in the detail that a plain enlargement turns into blur.', 'تجعل الصورة الصغيرة كبيرة بما يكفي لطباعتها بمقاس كبير، كواجهة محل أو بانر أو بوستر، دون مربعات أو ضبابية. الذكاء الاصطناعي لا يمطّ البكسلات فقط، بل يرسم التفاصيل التي يحوّلها التكبير العادي إلى ضباب.')}</p>
+            <ul>
+              <li><b aria-hidden="true">✓</b>{tx(lang, 'For printing a photo or a logo bigger than it was made for.', 'لطباعة صورة أو شعار بمقاس أكبر مما صُنع له.')}</li>
+              <li><b aria-hidden="true">✗</b><span>{tx(lang, 'Not for cutting or engraving a logo on the laser. Turn it into a vector instead: a vector stays sharp at any size. ', 'ليست لقص شعار أو حفره بالليزر. حوّله إلى فيكتور بدلاً من ذلك، فالفيكتور يبقى حاداً بأي مقاس. ')}<Link href={`/${lang}/${slugs.trace}`}>{tx(lang, 'Image to vector', 'تحويل صورة إلى فيكتور')}</Link></span></li>
+            </ul>
+          </div>
+          <button className="button secondary" type="button" disabled={loading} onClick={() => void trySample()}>{tx(lang, 'Try it on a sample picture', 'جرّبها على صورة نموذجية')}</button>
+        </div>}
         {!result && <ol className="up-steps">
           <li className={source ? 'done' : ''}><b>{tx(lang, 'Your picture', 'صورتك')}</b><span>{tx(lang, 'Drop, paste or choose it. It stays on this computer.', 'اسحبها أو الصقها أو اخترها. تبقى على جهازك.')}</span></li>
           <li className={source ? 'done' : ''}><b>{tx(lang, 'What it shows and how big you print it', 'نوعها ومقاس طباعتها')}</b><span>{tx(lang, 'The planner works out how much to enlarge it for the distance people will stand.', 'يحسب المخطط كم تحتاج من تكبير حسب المسافة التي يقف منها الناس.')}</span></li>
@@ -310,7 +378,7 @@ export function UpscaleWorkspace({ lang }: { lang: Language }) {
               : <div className="empty-preview"><Icon name="upscale" size={42} /><p>{tx(lang, 'Import, drop or paste a picture (Ctrl+V)', 'استورد صورة أو اسحبها أو الصقها (Ctrl+V)')}</p></div>}
           </div>
           {running && progress && <div className="ws-progress" style={{ margin: '0 13px 10px' }}><span style={{ width: `${(100 * progress.done) / progress.total}%` }} /></div>}
-          <div className="preview-bottom"><span><i />{tx(lang, 'The picture never leaves this computer', 'الصورة لا تغادر هذا الجهاز')}</span><span dir="ltr">Real-ESRGAN 4×</span></div>
+          <div className="preview-bottom"><span><i />{tx(lang, 'The picture never leaves this computer', 'الصورة لا تغادر هذا الجهاز')}</span><span>{tx(lang, 'AI model: ', 'نموذج الذكاء الاصطناعي: ')}<bdi dir="ltr">Real-ESRGAN 4×</bdi></span></div>
         </div>
 
         {source && (probe || probing) && crop && (

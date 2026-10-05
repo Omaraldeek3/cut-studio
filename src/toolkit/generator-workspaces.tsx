@@ -13,7 +13,7 @@ import { download } from './export';
 import {
   defaultGear, defaultHinge, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
   centreDistance, gearDrawing, gearGeometry, gearPairDrawing, hingeDrawing, pathStats, patternDrawing, printSize, puzzleDrawing,
-  resolution, rulerDrawing, steps, tagDrawing, testCardDrawing, MAX_TEST_SQUARES,
+  resolution, rulerDrawing, steps, tagBatch, tagDrawing, testCardDrawing, MAX_TAG_BATCH, MAX_TEST_SQUARES,
   type GearOptions, type HingeOptions, type PatternKind, type PatternOptions, type PuzzleOptions,
   type RulerOptions, type TagOptions, type TagShape, type TestCardOptions,
 } from './generators';
@@ -190,8 +190,19 @@ export function TagWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
     if (style !== 'font' || !engine || !o.text.trim()) return null;
     try { return textLoops(engine.hb, engine.choice.fonts, o.text.trim(), 1); } catch { return null; }
   }, [style, engine, o.text]);
-  const waiting = style === 'font' && !!o.text.trim() && !font;
-  const built = useMemo(() => waiting ? { drawing: null, error: '' } : build(() => tagDrawing(style === 'single' ? o : { ...o, text: '' }, font)), [o, style, font, waiting]);
+  // A batch makes one tag per line: names, or numbers filled in from a range.
+  const [batch, setBatch] = useState(false), [list, setList] = useState('أحمد\nسارة\nمحمد'), [from, setFrom] = useState(1), [to, setTo] = useState(20);
+  const names = useMemo(() => list.split('\n').map(n => n.trim()).filter(Boolean).slice(0, MAX_TAG_BATCH + 1), [list]);
+  const batchFonts = useMemo(() => {
+    if (!batch || style !== 'font' || !engine) return null;
+    const out = new Map<string, ReturnType<typeof textLoops> | null>();
+    for (const n of names) if (!out.has(n)) { try { out.set(n, textLoops(engine.hb, engine.choice.fonts, n, 1)); } catch { out.set(n, null); } }
+    return out;
+  }, [batch, style, engine, names]);
+  const waiting = style === 'font' && (batch ? !batchFonts : !!o.text.trim() && !font);
+  const built = useMemo(() => waiting ? { drawing: null, error: '' } : batch
+    ? build(() => tagBatch(o, names, style === 'font' ? n => batchFonts?.get(n) ?? null : undefined))
+    : build(() => tagDrawing(style === 'single' ? o : { ...o, text: '' }, font)), [o, style, font, waiting, batch, names, batchFonts]);
   const shapes: [TagShape, string][] = [['rounded', tx(lang, 'Rounded rectangle', 'مستطيل بزوايا دائرية')], ['circle', tx(lang, 'Circle', 'دائرة')], ['hexagon', tx(lang, 'Hexagon', 'سداسي')], ['star', tx(lang, 'Star', 'نجمة')], ['shield', tx(lang, 'Shield', 'درع')]];
   return <Frame lang={lang} built={built} name={`tag-${o.shape}-${o.width}x${o.height}`} onNest={onNest}
     caption={tx(lang, 'Tag outline, hole and engraving', 'حدود البطاقة والثقب والحفر')}
@@ -208,7 +219,13 @@ export function TagWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
       <NumberField label={tx(lang, 'Engraved border inset', 'إزاحة الإطار المحفور')} value={o.border} onChange={set('border')} step={0.5} unit="mm"/>
     </Section>
     <Section title={tx(lang, 'Text', 'النص')} number="03">
-      <TextField label={tx(lang, 'Engraved text', 'النص المحفور')} value={o.text} onChange={set('text')} max={40}/>
+      <Toggle label={tx(lang, 'Batch from a list', 'دفعة من قائمة')} value={batch} onChange={setBatch}/>
+      {batch ? <>
+        <label className="field"><span>{tx(lang, 'One name or number per line', 'اسم أو رقم في كل سطر')}</span><textarea className="lt-text" dir="auto" rows={6} value={list} onChange={e => setList(e.target.value)}/></label>
+        <div className="field-pair"><NumberField label={tx(lang, 'From', 'من')} value={from} onChange={setFrom} min={0} max={99999}/><NumberField label={tx(lang, 'To', 'إلى')} value={to} onChange={setTo} min={0} max={99999}/></div>
+        <button type="button" className="text-button" onClick={() => { if (Number.isInteger(from) && Number.isInteger(to) && to >= from) setList(Array.from({ length: Math.min(MAX_TAG_BATCH, to - from + 1) }, (_, i) => String(from + i)).join('\n')); }}>{tx(lang, 'Fill in numbers from–to', 'املأ الأرقام من–إلى')}</button>
+        <p className="micro">{tx(lang, `${names.length} tags, up to ${MAX_TAG_BATCH}. Each is its own part: Arrange on sheet fills sheets with them.`, `${names.length} بطاقة، حتى ${MAX_TAG_BATCH}. كل بطاقة قطعة مستقلة، و«ترتيب على اللوح» يوزعها على الألواح.`)}</p>
+      </> : <TextField label={tx(lang, 'Engraved text', 'النص المحفور')} value={o.text} onChange={set('text')} max={40}/>}
       <div className="preset-row">
         {WEIGHTS.map(w => <button key={w.id} className={style === 'font' && weight === w.id ? 'selected' : ''} onClick={() => { setStyle('font'); setWeight(w.id); }}>{tx(lang, `Tajawal ${w.en}`, `تجوال ${w.ar}`)}</button>)}
         <button className={style === 'single' ? 'selected' : ''} onClick={() => setStyle('single')}>{tx(lang, 'Single line A–Z', 'خط واحد A–Z')}</button>

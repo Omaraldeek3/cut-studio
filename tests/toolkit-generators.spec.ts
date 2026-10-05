@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import {
   defaultGear, defaultHinge, defaultPattern, defaultPuzzle, defaultRuler, defaultTag, defaultTestCard,
   centreDistance, gearDrawing, gearGeometry, gearPairDrawing, hingeDrawing, jobEstimate, patternDrawing, printSize, puzzleDrawing, resolution,
-  rulerDrawing, steps, tagDrawing, testCardDrawing, defaultJob,
+  rulerDrawing, steps, tagBatch, tagDrawing, testCardDrawing, defaultJob,
 } from "../src/toolkit/generators";
 import { toDxf, toSvg } from "../src/toolkit/export";
 import type { Drawing } from "../src/toolkit/types";
@@ -150,4 +150,14 @@ test("a gear pair is laid out in mesh: centres a pitch-radius sum apart, teeth n
     let gap = Infinity; for (const p of g1) for (const q of g2) gap = Math.min(gap, Math.hypot(p.x - q.x, p.y - q.y));
     expect(gap).toBeLessThan(defaultGear.module * 0.2);
   }
+});
+
+test("a tag batch makes one tag per line, each its own part, in a grid", () => {
+  const d = tagBatch({ ...defaultTag, width: 60, height: 30 }, ["ANNA", " ", "BO", "CARL", "DEE"]);
+  expect(d.shapes.map(s => s.name)).toEqual(["ANNA", "BO", "CARL", "DEE"]);
+  expect(new Set(d.shapes.map(s => s.id)).size).toBe(4);
+  // Two columns of two, 3 mm apart.
+  expect(d.width).toBe(123); expect(d.height).toBe(63);
+  expect(() => tagBatch(defaultTag, ["OK", "THIS NAME IS FAR TOO LONG FOR A SIXTY MILLIMETRE TAG"])).toThrow(/do not fit the tag: THIS NAME/);
+  expect(() => tagBatch(defaultTag, ["", "  "])).toThrow(/at least one name/);
 });

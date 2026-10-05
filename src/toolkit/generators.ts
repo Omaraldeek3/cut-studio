@@ -1,6 +1,7 @@
 import type { Contour, Drawing, Pen, Point, Shape } from './types';
 import { strokeText, textWidth } from './box/font';
 import { unionContours } from './vector-ops';
+import { moveShape } from './geometry';
 
 /* Pure generators for the parametric tools. Every function returns a Drawing
    in millimetres with y pointing down, the same shape every other tool reads
@@ -319,6 +320,33 @@ export function tagDrawing(o: TagOptions, font?: TagText | null): Drawing {
     }
   }
   return { width: w, height: h, shapes: [shape('tag', 'Tag', contours)] };
+}
+
+/** Most tags one batch makes. */
+export const MAX_TAG_BATCH = 500;
+/** One tag for each name, laid out in a grid 3 mm apart, each its own part,
+ *  ready to arrange on a sheet. `fontFor` gives a name's font outlines when
+ *  the text is set in a font; otherwise single-line letters are used. */
+export function tagBatch(o: TagOptions, names: string[], fontFor?: (name: string) => TagText | null): Drawing {
+  const list = names.map(n => n.trim()).filter(Boolean);
+  if (!list.length) throw new Error('Write at least one name, one per line.');
+  if (list.length > MAX_TAG_BATCH) throw new Error(`A batch makes up to ${MAX_TAG_BATCH} tags.`);
+  const tags: Drawing[] = [], misfits: string[] = [];
+  for (const name of list) {
+    try {
+      const font = fontFor?.(name);
+      if (fontFor && !font) throw new Error('No outlines for this name.');
+      tags.push(font ? tagDrawing({ ...o, text: '' }, font) : tagDrawing({ ...o, text: name }));
+    }
+    catch { misfits.push(name); }
+  }
+  if (misfits.length) throw new Error(`These names do not fit the tag: ${misfits.slice(0, 8).join('، ')}${misfits.length > 8 ? '…' : ''}. Make the tag wider or the letters smaller.`);
+  const gap = 3, w = tags[0].width, h = tags[0].height, columns = Math.ceil(Math.sqrt(tags.length)), rows = Math.ceil(tags.length / columns);
+  const shapes: Shape[] = tags.flatMap((tag, i) => tag.shapes.map(s => {
+    const dx = (i % columns) * (w + gap), dy = Math.floor(i / columns) * (h + gap);
+    return { ...moveShape(s, dx, dy), id: `tag-${i + 1}`, name: list[i] };
+  }));
+  return { width: columns * w + (columns - 1) * gap, height: rows * h + (rows - 1) * gap, shapes };
 }
 
 // ——— Grille patterns ———

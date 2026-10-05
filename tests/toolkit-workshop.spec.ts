@@ -128,3 +128,14 @@ test("Arabic lettering cuts a stencil plate with bridges", async ({ page }) => {
   await expect(page.locator(".stats-row")).toContainText("1");
   expect(errors).toEqual([]);
 });
+
+test("the tag maker makes a batch of numbered tags", async ({ page }) => {
+  const errors = await openTool(page, "Tags & keychains");
+  await page.getByText("Batch from a list", { exact: true }).click();
+  await page.getByLabel("From", { exact: true }).fill("1");
+  await page.getByLabel("To", { exact: true }).fill("12");
+  await page.getByRole("button", { name: "Fill in numbers from–to", exact: true }).click();
+  await expect(page.getByText(/^12 tags, up to/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export SVG", exact: true })).toBeEnabled({ timeout: 30_000 });
+  expect(errors).toEqual([]);
+});

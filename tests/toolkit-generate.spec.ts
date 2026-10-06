@@ -98,9 +98,20 @@ test("FLUX through fal.ai: any model typed in, the key sent to fal only, the pic
     return route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*", "content-type": "application/json" }, body: JSON.stringify({ images: Array.from({ length: n }, () => ({ url: `data:image/png;base64,${png}`, content_type: "image/png" })) }) });
   });
   await page.route("https://external.api.recraft.ai/**", route => route.abort());
+  // fal's public list of text-to-image models, in two pages.
+  await page.route("https://api.fal.ai/v1/models**", route => {
+    const second = route.request().url().includes("cursor=");
+    return route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*", "content-type": "application/json" }, body: JSON.stringify(second
+      ? { models: [{ endpoint_id: "fal-ai/hidream-i1-full", metadata: { display_name: "HiDream I1", status: "active" } }], has_more: false }
+      : { models: [{ endpoint_id: "fal-ai/flux/dev", metadata: { display_name: "FLUX.1 [dev]" } }, { endpoint_id: "fal-ai/qwen-image", metadata: { display_name: "Qwen Image" } }], has_more: true, next_cursor: "p2" }) });
+  });
 
   await page.goto("/en/ai-design");
   await page.getByLabel("AI service").selectOption("fal");
+  // Every model fal lists joins the recommended ones; a model already recommended is not listed twice.
+  await expect(page.getByText("3 image models from fal.ai. Your choice is remembered.")).toBeVisible();
+  await expect(page.getByLabel("Model", { exact: true }).locator("option", { hasText: "Qwen Image · fal-ai/qwen-image" })).toHaveCount(1);
+  await expect(page.getByLabel("Model", { exact: true }).locator('option[value="fal-ai/flux/dev"]')).toHaveCount(1);
   await page.getByLabel("Model", { exact: true }).selectOption({ label: "Another model…" });
   await page.getByLabel("Model name, as the service writes it").fill("fal-ai/flux/dev");
   await page.getByLabel("API key").fill("fal-key-1");
@@ -129,6 +140,11 @@ test("FLUX through fal.ai: any model typed in, the key sent to fal only, the pic
   await page.locator(".gen-card").first().getByRole("button", { name: /Prepare for cutting/ }).click();
   await expect(page).toHaveURL(/\/en\/image-to-vector$/);
   await expect(page.getByText(/design-\d+/).first()).toBeVisible();
+  // The model chosen is picked again on the next visit, one from fal's own list included.
+  await page.goto("/en/ai-design");
+  await page.getByLabel("Model", { exact: true }).selectOption("fal-ai/qwen-image");
+  await page.reload();
+  await expect(page.getByLabel("Model", { exact: true })).toHaveValue("fal-ai/qwen-image");
   expect(errors).toEqual([]);
 });
 
@@ -137,7 +153,9 @@ test("Google's Imagen gets its own request shape, and an unknown model is named 
   const sent: { url: string; key: string | null; body: Record<string, unknown> }[] = [];
   await page.route("https://generativelanguage.googleapis.com/**", async route => {
     const request = route.request();
-    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "x-goog-api-key, Content-Type", "access-control-allow-methods": "POST" } });
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-headers": "x-goog-api-key, Content-Type", "access-control-allow-methods": "GET, POST" } });
+    // The key's own list of image models.
+    if (request.method() === "GET") return route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*", "content-type": "application/json" }, body: JSON.stringify({ models: [{ name: "models/imagen-4.0-generate-001", displayName: "Imagen 4" }, { name: "models/imagen-3.5-test", displayName: "Imagen test" }, { name: "models/gemini-2.5-pro", displayName: "Gemini Pro", supportedGenerationMethods: ["generateContent"] }] }) });
     sent.push({ url: request.url(), key: request.headers()["x-goog-api-key"] ?? null, body: request.postDataJSON() });
     const cors = { "access-control-allow-origin": "*", "content-type": "application/json" };
     if (request.url().includes("imagen-9")) return route.fulfill({ status: 404, headers: cors, body: JSON.stringify({ error: { code: 404, message: "models/imagen-9 is not found" } }) });
@@ -147,6 +165,10 @@ test("Google's Imagen gets its own request shape, and an unknown model is named 
   await page.getByLabel("خدمة الذكاء الاصطناعي").selectOption("google");
   await page.getByLabel("النموذج", { exact: true }).selectOption("imagen-4.0-generate-001");
   await page.getByLabel("مفتاح API").fill("g-key");
+  // With the key in, the account's image models are listed; text models are left out.
+  await expect(page.getByText("2 نموذج صور من Google AI. يُحفظ اختيارك.")).toBeVisible();
+  await expect(page.getByLabel("النموذج", { exact: true }).locator('option[value="imagen-3.5-test"]')).toHaveCount(1);
+  await expect(page.getByLabel("النموذج", { exact: true }).locator('option[value="gemini-2.5-pro"]')).toHaveCount(0);
   await page.getByLabel("الشكل (العرض:الارتفاع)").selectOption("2:1");
   await page.getByRole("button", { name: "صقر بجناحين مفتوحين" }).click();
   await page.getByRole("button", { name: /ارسم تصميمين|ارسم 2 تصاميم/ }).click();

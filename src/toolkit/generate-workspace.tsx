@@ -7,8 +7,8 @@ import { saveFile } from './image-input';
 import type { ImageTarget } from './cutout-workspace';
 import {
   composePrompt, estimate, MAX_COUNT, MAX_DESCRIPTION, PROVIDERS, provider as providerOf, purposes, ratios,
-  storeBase, storedBase, storedKey, storedProvider, storeKey, storeProvider, toPng, watchStore,
-  type Account, type ProviderId, type Result,
+  storeBase, storedBase, storedKey, storedModel, storedProvider, storeKey, storeModel, storeProvider, toPng, watchStore,
+  type Account, type Listed, type ProviderId, type Result,
 } from './image-ai';
 
 /* Design from a description. Every other tool works on this computer; this
@@ -46,6 +46,9 @@ export function GenerateWorkspace({ lang, onSendImage }: { lang: Language; onSen
   const remember = rememberChoice[id] ?? !!saved;
   const [models, setModels] = useState<Partial<Record<ProviderId, string>>>({});
   const [typed, setTyped] = useState<Partial<Record<ProviderId, string>>>({});
+  // The model chosen last time for this service, and every model the service lists.
+  const savedModel = useSyncExternalStore(watchStore, () => storedModel(id), () => '');
+  const [lists, setLists] = useState<Partial<Record<ProviderId, { key: string; state: 'loading' | 'ready' | 'error'; models: Listed[] }>>>({});
   const [account, setAccount] = useState<(Account & { for: ProviderId }) | null>(null);
   const [checking, setChecking] = useState(false);
   const [description, setDescription] = useState('');
@@ -60,7 +63,31 @@ export function GenerateWorkspace({ lang, onSendImage }: { lang: Language; onSen
 
   useEffect(() => () => { abort.current?.abort(); urls.current.forEach(URL.revokeObjectURL); }, []);
 
-  const picked = models[id] ?? (service.models[0]?.id ?? OTHER);
+  // Reads the service's own list of image models: at once where it is public, once a key is in where it is not.
+  const listKey = service.catalog?.keyed ? key.trim() : '';
+  const list = lists[id];
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    const catalog = service.catalog, tag = `${id}:${listKey}`;
+    if (!catalog || (catalog.keyed && !listKey) || asked.current.has(tag)) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      asked.current.add(tag);
+      setLists(all => ({ ...all, [id]: { key: listKey, state: 'loading', models: [] } }));
+      catalog.load(listKey, controller.signal)
+        .then(found => setLists(all => ({ ...all, [id]: { key: listKey, state: 'ready', models: found } })))
+        .catch(() => {
+          // A list that failed, or was left half-read, is asked for again next time.
+          asked.current.delete(tag);
+          if (!controller.signal.aborted) setLists(all => ({ ...all, [id]: { key: listKey, state: 'error', models: [] } }));
+        });
+    }, catalog.keyed ? 700 : 0);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [id, service, listKey]);
+  const fetched = (list?.key === listKey ? list.models : []).filter(m => !service.models.some(c => c.id === m.id));
+  const known = (value: string) => value === OTHER || service.models.some(m => m.id === value) || fetched.some(m => m.id === value);
+
+  const picked = models[id] ?? (savedModel || service.models[0]?.id || OTHER);
   const model = (picked === OTHER ? typed[id] ?? '' : picked).trim();
   const listed = service.models.find(m => m.id === model);
   const chosenPurpose = purposes.find(p => p.id === purpose)!;
@@ -210,13 +237,24 @@ export function GenerateWorkspace({ lang, onSendImage }: { lang: Language; onSen
 
         <Section title={tx(lang, 'Model and shape', 'النموذج والشكل')} number="03">
           {service.models.length > 0 && <label className="field"><span>{tx(lang, 'Model', 'النموذج')}</span>
-            <select aria-label={tx(lang, 'Model', 'النموذج')} value={picked} onChange={e => setModels(all => ({ ...all, [id]: e.target.value }))}>
-              {service.models.map(m => <option key={m.id} value={m.id}>{tx(lang, m.en, m.ar)}{m.price !== undefined ? ` · ${dollars(m.price)}` : ''}</option>)}
+            <select aria-label={tx(lang, 'Model', 'النموذج')} value={picked} onChange={e => { const v = e.target.value; setModels(all => ({ ...all, [id]: v })); if (v !== OTHER) storeModel(id, v); }}>
+              <optgroup label={tx(lang, 'Recommended, with prices', 'المقترحة، مع أسعارها')}>
+                {service.models.map(m => <option key={m.id} value={m.id}>{tx(lang, m.en, m.ar)}{m.price !== undefined ? ` · ${dollars(m.price)}` : ''}</option>)}
+              </optgroup>
+              {fetched.length > 0 && <optgroup label={tx(lang, `All ${service.name} image models (${fetched.length})`, `كل نماذج الصور في ${service.name} (${fetched.length})`)}>
+                {fetched.map(m => <option key={m.id} value={m.id}>{m.name === m.id ? m.id : `${m.name} · ${m.id}`}</option>)}
+              </optgroup>}
+              {!known(picked) && <option value={picked}>{picked}</option>}
               {service.anyModel && <option value={OTHER}>{tx(lang, 'Another model…', 'نموذج آخر…')}</option>}
             </select>
           </label>}
+          {service.catalog && <p className="micro gen-list" role="status">{
+            list?.state === 'loading' ? tx(lang, `Reading ${service.name}’s model list…`, `جارٍ جلب قائمة نماذج ${service.name}…`)
+            : list?.state === 'ready' && list.key === listKey ? tx(lang, `${list.models.length} image models from ${service.name}. Your choice is remembered.`, `${list.models.length} نموذج صور من ${service.name}. يُحفظ اختيارك.`)
+            : list?.state === 'error' ? tx(lang, `${service.name}’s list could not be read; the recommended models are shown.`, `تعذّر جلب قائمة ${service.name}؛ تظهر النماذج المقترحة.`)
+            : service.catalog.keyed ? tx(lang, `Paste your key to list every image model on your ${service.name} account.`, `الصق مفتاحك لتظهر كل نماذج الصور في حسابك على ${service.name}.`) : ''}</p>}
           {picked === OTHER && <label className="field"><span>{tx(lang, 'Model name, as the service writes it', 'اسم النموذج كما تكتبه الخدمة')}</span>
-            <input dir="ltr" autoComplete="off" spellCheck={false} value={typed[id] ?? ''} placeholder={id === 'fal' ? 'fal-ai/flux/dev' : id === 'openrouter' ? 'google/gemini-2.5-flash-image' : 'model-name'} onChange={e => setTyped(all => ({ ...all, [id]: e.target.value }))} />
+            <input dir="ltr" autoComplete="off" spellCheck={false} value={typed[id] ?? ''} placeholder={id === 'fal' ? 'fal-ai/flux/dev' : id === 'openrouter' ? 'google/gemini-2.5-flash-image' : 'model-name'} onChange={e => { const v = e.target.value; setTyped(all => ({ ...all, [id]: v })); if (v.trim()) storeModel(id, v.trim()); }} />
           </label>}
           <label className="field"><span>{tx(lang, 'Shape (width:height)', 'الشكل (العرض:الارتفاع)')}</span>
             <select value={ratio} onChange={e => setRatio(e.target.value)} dir="ltr">

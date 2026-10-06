@@ -12,6 +12,8 @@ export type Model = { id: string; en: string; ar: string; vector?: boolean; pric
 export type Result = { blob: Blob; svg?: string };
 export type Request = { key: string; prompt: string; model: string; ratio: string; count: number; base?: string; signal?: AbortSignal };
 export type Account = { name: string; credits?: number; unit?: [string, string] };
+/** A model from a service's own list. */
+export type Listed = { id: string; name: string };
 export type Provider = {
   id: ProviderId; name: string; site: string;
   keysUrl: string; pricingUrl: string;
@@ -23,6 +25,8 @@ export type Provider = {
   /** The service is the user's own: its address is asked for. */
   needsBase?: boolean;
   generate: (r: Request) => Promise<Result[]>;
+  /** Every image model the service offers, read from its own list; `keyed` when the list needs the key. */
+  catalog?: { keyed: boolean; load: (key: string, signal?: AbortSignal) => Promise<Listed[]> };
   /** Checks a key without drawing anything, where the service allows it. */
   account?: (key: string, signal?: AbortSignal, base?: string) => Promise<Account>;
 };
@@ -83,6 +87,9 @@ const write = (name: string, value: string) => {
 /** The key remembered on this computer for a service, or '' (also on the server). */
 export const storedKey = (id: ProviderId) => read(keyStore(id));
 export const storeKey = (id: ProviderId, key: string) => write(keyStore(id), key);
+/** The model last chosen for a service, so it is picked again next time. Not secret. */
+export const storedModel = (id: ProviderId) => read(`cut-studio:${id}-model`);
+export const storeModel = (id: ProviderId, model: string) => write(`cut-studio:${id}-model`, model);
 export const storedBase = () => read(BASE_STORE);
 export const storeBase = (base: string) => write(BASE_STORE, base);
 /** The service last used, so a returning user lands on it. Not secret. */
@@ -198,6 +205,20 @@ const fal: Provider = {
     { id: 'fal-ai/bytedance/seedream/v4/text-to-image', price: 0.03, en: 'Seedream 4', ar: 'Seedream 4' },
     { id: 'fal-ai/nano-banana', price: 0.039, en: 'Gemini image (Nano Banana)', ar: 'صور Gemini (Nano Banana)' },
   ],
+  catalog: {
+    keyed: false,
+    async load(_key, signal) {
+      const out: Listed[] = [];
+      let cursor = '';
+      for (let page = 0; page < 10; page++) {
+        const body = await json('fal.ai', `https://api.fal.ai/v1/models?category=text-to-image&limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { signal });
+        for (const m of body?.models ?? []) if (m?.endpoint_id && m?.metadata?.status !== 'deprecated') out.push({ id: m.endpoint_id, name: String(m.metadata?.display_name || m.endpoint_id) });
+        if (!body?.has_more || !body?.next_cursor) break;
+        cursor = body.next_cursor;
+      }
+      return out;
+    },
+  },
   async generate(r) {
     const size = pixels(r.ratio, 1024), model = r.model.trim().replace(/^https?:\/\/(queue\.)?fal\.run\//, '').replace(/^\/+|\/+$/g, '');
     const body = await json('fal.ai', `https://fal.run/${model}`, post({ prompt: r.prompt, num_images: r.count, image_size: size, aspect_ratio: nearest(r.ratio, ['1:1', '4:3', '3:4', '16:9', '9:16', '21:9', '9:21']), sync_mode: true }, { Authorization: `Key ${r.key}` }, r.signal), model);
@@ -225,6 +246,13 @@ const openai: Provider = {
     };
     // DALL·E 3 draws one picture per request.
     return some('OpenAI', r.model === 'dall-e-3' ? await each(r.count, () => one(1)) : await one(r.count));
+  },
+  catalog: {
+    keyed: true,
+    async load(key, signal) {
+      const body = await json('OpenAI', 'https://api.openai.com/v1/models', { signal, headers: { Authorization: `Bearer ${key}` } });
+      return (body?.data ?? []).map((m: { id: string }) => m.id).filter((id: string) => /^(gpt-image|dall-e|chatgpt-image)/.test(id)).sort().map((id: string) => ({ id, name: id }));
+    },
   },
   async account(key, signal) {
     await json('OpenAI', 'https://api.openai.com/v1/models', { signal, headers: { Authorization: `Bearer ${key}` } });
@@ -265,6 +293,23 @@ const google: Provider = {
       return found.filter(p => p.inlineData?.data).map(p => ({ blob: fromBase64(p.inlineData!.data, p.inlineData!.mimeType || 'image/png') }));
     }));
   },
+  catalog: {
+    keyed: true,
+    async load(key, signal) {
+      const out: Listed[] = [];
+      let token = '';
+      for (let page = 0; page < 5; page++) {
+        const body = await json('Google AI', `${GOOGLE}/models?pageSize=1000${token ? `&pageToken=${token}` : ''}`, { signal, headers: { 'x-goog-api-key': key } });
+        for (const m of body?.models ?? []) {
+          const id = String(m?.name ?? '').replace(/^models\//, '');
+          if (/^imagen/.test(id) || /image/.test(id) && (m?.supportedGenerationMethods ?? []).includes('generateContent')) out.push({ id, name: String(m?.displayName || id) });
+        }
+        if (!body?.nextPageToken) break;
+        token = body.nextPageToken;
+      }
+      return out;
+    },
+  },
   async account(key, signal) {
     await json('Google AI', `${GOOGLE}/models?pageSize=1`, { signal, headers: { 'x-goog-api-key': key } });
     return { name: '' };
@@ -287,6 +332,14 @@ const together: Provider = {
     const body = await json('Together AI', 'https://api.together.xyz/v1/images/generations', post({ model: r.model, prompt: r.prompt, width, height, n: r.count, response_format: 'b64_json' }, { Authorization: `Bearer ${r.key}` }, r.signal), r.model);
     return some('Together AI', await openAiImages('Together AI', body, r.signal));
   },
+  catalog: {
+    keyed: true,
+    async load(key, signal) {
+      const body = await json('Together AI', 'https://api.together.xyz/v1/models', { signal, headers: { Authorization: `Bearer ${key}` } });
+      const all: { id?: string; type?: string; display_name?: string }[] = Array.isArray(body) ? body : body?.data ?? [];
+      return all.filter(m => m.id && m.type === 'image').map(m => ({ id: m.id!, name: m.display_name || m.id! }));
+    },
+  },
   async account(key, signal) {
     await json('Together AI', 'https://api.together.xyz/v1/models', { signal, headers: { Authorization: `Bearer ${key}` } });
     return { name: '' };
@@ -301,6 +354,13 @@ const openrouter: Provider = {
   models: [
     { id: 'google/gemini-2.5-flash-image', price: 0.039, en: 'Gemini 2.5 Flash Image', ar: 'Gemini 2.5 Flash Image' },
   ],
+  catalog: {
+    keyed: false,
+    async load(_key, signal) {
+      const body = await json('OpenRouter', 'https://openrouter.ai/api/v1/models?output_modalities=image', { signal });
+      return (body?.data ?? []).filter((m: { id?: string }) => m.id).map((m: { id: string; name?: string }) => ({ id: m.id, name: m.name || m.id }));
+    },
+  },
   async generate(r) {
     return some('OpenRouter', await each(r.count, async () => {
       const body = await json('OpenRouter', 'https://openrouter.ai/api/v1/chat/completions', post({ model: r.model, messages: [{ role: 'user', content: r.prompt }], modalities: ['image', 'text'], image_config: { aspect_ratio: nearest(r.ratio, ['1:1', '4:3', '3:4', '16:9', '9:16', '21:9']) } }, { Authorization: `Bearer ${r.key}`, 'X-Title': 'Cut Studio' }, r.signal), r.model);

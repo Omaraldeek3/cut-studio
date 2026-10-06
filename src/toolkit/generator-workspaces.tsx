@@ -9,7 +9,8 @@ const Gear3D = dynamic(() => import('./gear3d'), { ssr: false });
 const Assembly3D = dynamic(() => import('./assembly3d'), { ssr: false });
 import { lyingFlat, polyBoxPieces, trophyPieces, type Piece } from './assembly';
 import type { Drawing } from './types';
-import { tx, type Language } from './copy';
+import Link from 'next/link';
+import { slugs, titles, tx, type Language, type ToolId } from './copy';
 import { ErrorNote, Exports, Icon, NumberField, Section, Stat, Toggle, VectorPreview } from './ui';
 import { download } from './export';
 import { defaultPolyBox, polyBoxDrawing, type PolyBoxOptions, type PolyBoxResult } from './polybox';
@@ -51,12 +52,31 @@ function useViews(lang: Language, pieces: Piece[] | null, label: string) {
   return { tabs, preview };
 }
 
-function Frame({ lang, built, name, caption, children, stats, tip, onNest, below, exportsExtra, preview, tabs, pieces }: {
+/** The makers listed with the product templates, in one choice of what to make. */
+const MAKERS: ToolId[] = ['polybox', 'tag', 'trophy', 'gear', 'puzzle', 'ruler', 'pattern'];
+
+/** What to make: every product template and every ready-made maker in one list.
+ *  A template opens in place on the templates page; a maker opens its own page. */
+function ProductChooser({ lang, current, onTemplate }: { lang: Language; current: string; onTemplate?: (id: TemplateId) => void }) {
+  const index = lang === 'ar' ? 1 : 0;
+  return <Section title={tx(lang, 'Product', 'المنتج')}>
+    <div className="preset-row product-chooser" role="group" aria-label={tx(lang, 'Product', 'المنتج')}>
+      {TEMPLATES.map(t => onTemplate
+        ? <button key={t.id} type="button" className={t.id === current ? 'selected' : ''} aria-pressed={t.id === current} onClick={() => onTemplate(t.id)}>{tx(lang, t.en, t.ar)}</button>
+        : <Link key={t.id} href={`/${lang}/${slugs.templates}#${t.id}`}>{tx(lang, t.en, t.ar)}</Link>)}
+      {MAKERS.map(id => <Link key={id} href={`/${lang}/${slugs[id]}`} className={id === current ? 'selected' : ''} aria-current={id === current ? 'page' : undefined}>{titles[id][index]}</Link>)}
+    </div>
+  </Section>;
+}
+
+function Frame({ lang, built, name, caption, children, stats, tip, onNest, below, exportsExtra, preview, tabs, pieces, product, onTemplate }: {
   lang: Language; built: Built; name: string; caption: string; children: React.ReactNode;
   stats?: React.ReactNode; tip?: string; onNest?: (d: Drawing) => void; below?: React.ReactNode; exportsExtra?: React.ReactNode;
   preview?: React.ReactNode; tabs?: React.ReactNode;
   /** The parts put together: adds a 3D view beside the flat layout. */
   pieces?: Piece[] | null;
+  /** The product this is, for the list of everything ready-made. */
+  product?: string; onTemplate?: (id: TemplateId) => void;
 }) {
   const { drawing, error } = built;
   const views = useViews(lang, pieces ?? null, caption);
@@ -66,7 +86,7 @@ function Frame({ lang, built, name, caption, children, stats, tip, onNest, below
   const nest = onNest && <button className="button secondary" disabled={!drawing} onClick={() => { if (drawing) onNest(drawing); }}><Icon name="nest" size={16}/>{tx(lang, 'Arrange on sheet', 'ترتيب على اللوح')}</button>;
   return <>
     <div className="workspace">
-      <aside className="controls">{children}<div className="control-action"><ErrorNote error={error} lang={lang}/></div></aside>
+      <aside className="controls">{product && <ProductChooser lang={lang} current={product} onTemplate={onTemplate} />}{children}<div className="control-action"><ErrorNote error={error} lang={lang}/></div></aside>
       <div className="canvas-column">
         <div className="canvas-toolbar">
           {tabs ?? <span className={`status-pill ${drawing ? 'ready' : ''}`}><i/>{drawing ? tx(lang, 'Ready to cut', 'جاهز للقص') : tx(lang, 'Check the settings', 'راجع الإعدادات')}</span>}
@@ -141,7 +161,7 @@ export function GearWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dr
     <button role="tab" aria-selected={view === 'flat'} className={view === 'flat' ? 'selected' : ''} onClick={() => setView('flat')}>{tx(lang, 'Flat layout', 'التخطيط المسطّح')}</button>
     <button role="tab" aria-selected={view === '3d'} className={view === '3d' ? 'selected' : ''} onClick={() => setView('3d')}>{tx(lang, '3D view', 'عرض ثلاثي الأبعاد')}</button>
   </div>;
-  return <Frame lang={lang} built={built} name={pair ? `gears-${Math.round(o.teeth)}t-${Math.round(teeth2)}t-m${o.module}` : `gear-${Math.round(o.teeth)}t-m${o.module}`} onNest={onNest}
+  return <Frame lang={lang} built={built} product="gear" name={pair ? `gears-${Math.round(o.teeth)}t-${Math.round(teeth2)}t-m${o.module}` : `gear-${Math.round(o.teeth)}t-m${o.module}`} onNest={onNest}
     caption={tx(lang, 'Gear outline · pitch circle engraved', 'حدود الترس · دائرة الخطوة محفورة')}
     tabs={tabs}
     preview={view === '3d' && built.drawing ? <div className="preview-surface box-3d-surface"><Gear3D parts={spinParts} thickness={thickness} lang={lang}/></div> : undefined}
@@ -179,7 +199,7 @@ export function PuzzleWorkspace({ lang, onNest }: { lang: Language; onNest: (d: 
   const [o, set] = useOptions<PuzzleOptions>(defaultPuzzle);
   const built = useMemo(() => build(() => puzzleDrawing(o)), [o]);
   const pieces = useMemo(() => (built.drawing ? lyingFlat(built.drawing) : null), [built.drawing]);
-  return <Frame lang={lang} built={built} name={`puzzle-${o.columns}x${o.rows}`} onNest={onNest} pieces={pieces}
+  return <Frame lang={lang} built={built} product="puzzle" name={`puzzle-${o.columns}x${o.rows}`} onNest={onNest} pieces={pieces}
     caption={tx(lang, 'Puzzle border and piece cuts', 'حدود البازل وخطوط القطع')}
     stats={<Stat label={tx(lang, 'Pieces', 'القطع')} value={Math.round(o.columns) * Math.round(o.rows)}/>}
     tip={tx(lang, 'Engrave or glue a picture onto the sheet first, then cut the lines. Pieces of 25 mm or more are easier for small hands.', 'اطبع أو الصق الصورة على اللوح أولاً ثم اقطع الخطوط. القطع بمقاس ٢٥ مم أو أكثر أسهل للأطفال.')}>
@@ -225,7 +245,7 @@ export function TagWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
     : build(() => tagDrawing(style === 'single' ? o : { ...o, text: '' }, font)), [o, style, font, waiting, batch, names, batchFonts]);
   const shapes: [TagShape, string][] = [['rounded', tx(lang, 'Rounded rectangle', 'مستطيل بزوايا دائرية')], ['circle', tx(lang, 'Circle', 'دائرة')], ['hexagon', tx(lang, 'Hexagon', 'سداسي')], ['star', tx(lang, 'Star', 'نجمة')], ['shield', tx(lang, 'Shield', 'درع')]];
   const pieces = useMemo(() => (built.drawing ? lyingFlat(built.drawing) : null), [built.drawing]);
-  return <Frame lang={lang} built={built} name={`tag-${o.shape}-${o.width}x${o.height}`} onNest={onNest} pieces={pieces}
+  return <Frame lang={lang} built={built} product="tag" name={`tag-${o.shape}-${o.width}x${o.height}`} onNest={onNest} pieces={pieces}
     caption={tx(lang, 'Tag outline, hole and engraving', 'حدود البطاقة والثقب والحفر')}
     tip={style === 'font'
       ? tx(lang, 'Font text is filled: set its blue layer to Scan (engrave) in RDWorks or LightBurn. Send the tag to nesting to fill a sheet with copies.', 'نص الخط مملوء: اجعل طبقته الزرقاء على وضع Scan (حفر) في RDWorks أو LightBurn. أرسل البطاقة إلى ترتيب القطع لتملأ لوحاً بنسخ منها.')
@@ -261,19 +281,23 @@ export function TagWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Dra
 
 export function TemplatesWorkspace({ lang, onNest }: { lang: Language; onNest: (d: Drawing) => void }) {
   const [id, setId] = useState<TemplateId>('qr');
+  // A template named in the address (#napkin) opens directly, as the product list links them.
+  useEffect(() => {
+    const open = () => { const want = window.location.hash.slice(1); if (TEMPLATES.some(t => t.id === want)) setId(want as TemplateId); };
+    const timer = setTimeout(open, 0);
+    window.addEventListener('hashchange', open);
+    return () => { clearTimeout(timer); window.removeEventListener('hashchange', open); };
+  }, []);
   const [values, setValues] = useState<Partial<Record<TemplateId, Record<string, number>>>>({});
   const template = TEMPLATES.find(t => t.id === id)!, v = values[id] ?? template.defaults;
   const setValue = (key: string) => (x: number) => setValues(all => ({ ...all, [id]: { ...(all[id] ?? template.defaults), [key]: x } }));
   const built = useMemo(() => build(() => buildTemplate(id, values[id] ?? TEMPLATES.find(t => t.id === id)!.defaults)), [id, values]);
   const pieces = useMemo(() => (built.drawing ? assembleTemplate(id, values[id] ?? TEMPLATES.find(t => t.id === id)!.defaults, built.drawing) : null), [id, values, built.drawing]);
-  return <Frame lang={lang} built={built} name={`${id}-template`} onNest={onNest} pieces={pieces}
+  return <Frame lang={lang} built={built} product={id} onTemplate={setId} name={`${id}-template`} onNest={onNest} pieces={pieces}
     caption={tx(lang, template.en, template.ar)}
     stats={<Stat label={tx(lang, 'Parts', 'القطع')} value={built.drawing ? built.drawing.shapes.length : '—'}/>}
     tip={tx(lang, template.noteEn, template.noteAr)}>
-    <Section title={tx(lang, 'Product', 'المنتج')} number="01">
-      <div className="preset-row">{TEMPLATES.map(t => <button key={t.id} type="button" className={t.id === id ? 'selected' : ''} onClick={() => setId(t.id)}>{tx(lang, t.en, t.ar)}</button>)}</div>
-    </Section>
-    <Section title={tx(lang, 'Size', 'المقاس')} number="02">
+    <Section title={tx(lang, 'Size', 'المقاس')} number="01">
       <div className="template-fields">{template.fields.map(f => <NumberField key={f.key} label={tx(lang, f.en, f.ar)} value={v[f.key]} onChange={setValue(f.key)} min={f.min} max={f.max} step={f.step ?? 1} unit={f.unit}/>)}</div>
       <p className="micro">{tx(lang, 'Slots are the material thickness plus the clearance wide; measure your fit with the kerf test.', 'عرض الفتحات = سماكة الخامة + الخلوص؛ قِس التعشيق المناسب بعينة اختبار الكيرف.')}</p>
     </Section>
@@ -288,7 +312,7 @@ export function PolyBoxWorkspace({ lang, onNest }: { lang: Language; onNest: (d:
   const info = built.drawing as PolyBoxResult | null;
   const pieces = useMemo(() => (built.drawing ? polyBoxPieces(built.drawing, o) : null), [built.drawing, o]);
   const shapes: [string, string][] = [['5', tx(lang, 'Pentagon', 'خماسي')], ['6', tx(lang, 'Hexagon', 'سداسي')], ['8', tx(lang, 'Octagon', 'ثماني')], ['12', tx(lang, '12 sides', '١٢ ضلعاً')]];
-  return <Frame lang={lang} built={built} name={`polygon-box-${o.sides}-${o.width}x${o.height}`} onNest={onNest} pieces={pieces}
+  return <Frame lang={lang} built={built} product="polybox" name={`polygon-box-${o.sides}-${o.width}x${o.height}`} onNest={onNest} pieces={pieces}
     caption={tx(lang, 'Base, lid, lid lip and the wall strip', 'القاعدة والغطاء وحلقة الغطاء وشريط الجدار')}
     stats={<><Stat label={tx(lang, 'Wall strip', 'شريط الجدار')} value={info ? info.stripLength.toFixed(0) : '—'} unit="mm"/><Stat label={tx(lang, 'Each side', 'طول الضلع')} value={info ? info.side.toFixed(1) : '—'} unit="mm"/></>}
     tip={tx(lang, 'Bend the strip at the hinges round the base, with its tabs in the slots; the side with no slot is where the dovetails meet. Glue the lip under the lid. Plywood and MDF up to 3 mm bend best; test a hinge first.', 'اثنِ الشريط عند المفاصل حول القاعدة وأدخل ألسنته في الفتحات؛ الضلع الذي بلا فتحة هو مكان التقاء ذيل الحمامة. الصق الحلقة تحت الغطاء. الخشب المعاكس وMDF حتى ٣ مم ينثنيان أفضل؛ جرّب مفصلاً أولاً.')}>
@@ -314,7 +338,7 @@ export function TrophyWorkspace({ lang, onNest }: { lang: Language; onNest: (d: 
   const slot = built.drawing ? (built.drawing as ReturnType<typeof trophyDrawing>).slot : null;
   const pieces = useMemo(() => (built.drawing ? trophyPieces(built.drawing, o) : null), [built.drawing, o]);
   const tops: [TrophyOptions['plateTop'], string][] = [['arch', tx(lang, 'Arched top', 'قوس علوي')], ['rounded', tx(lang, 'Rounded corners', 'زوايا دائرية')], ['square', tx(lang, 'Square', 'مستطيل')]];
-  return <Frame lang={lang} built={built} name={`trophy-base-${o.width}x${o.depth}`} onNest={onNest} pieces={pieces}
+  return <Frame lang={lang} built={built} product="trophy" name={`trophy-base-${o.width}x${o.depth}`} onNest={onNest} pieces={pieces}
     caption={tx(lang, 'Base layers, top first, and the acrylic plate', 'طبقات القاعدة من الأعلى، ولوح الأكريليك')}
     stats={<><Stat label={tx(lang, 'Slot', 'المجرى')} value={slot ? `${slot.length.toFixed(1)} × ${slot.width.toFixed(1)}` : '—'} unit="mm"/><Stat label={tx(lang, 'Plate sits in', 'عمق تثبيت اللوح')} value={slot ? slot.depth.toFixed(1) : '—'} unit="mm"/></>}
     tip={tx(lang, 'Cut the layers from the base material and glue them in order, slotted layers on top. Cut the plate from acrylic: its height includes the part that sits in the slot. Engrave the plate before taking off its film.', 'اقصص الطبقات من خامة القاعدة والصقها بالترتيب، والطبقات ذات المجرى في الأعلى. اقصص اللوح من الأكريليك: ارتفاعه يشمل الجزء الذي يدخل المجرى. احفر اللوح قبل نزع طبقة الحماية.')}>
@@ -348,7 +372,7 @@ export function PatternWorkspace({ lang, onNest }: { lang: Language; onNest: (d:
     return (100 * area) / (o.width * o.height);
   })() : 0;
   const kinds: [PatternKind, string][] = [['hex', tx(lang, 'Honeycomb', 'خلية نحل')], ['circle', tx(lang, 'Circles', 'دوائر')], ['diamond', tx(lang, 'Diamonds', 'معيّنات')], ['slot', tx(lang, 'Slots', 'فتحات طولية')]];
-  return <Frame lang={lang} built={built} name={`grille-${o.kind}-${o.width}x${o.height}`} onNest={onNest}
+  return <Frame lang={lang} built={built} product="pattern" name={`grille-${o.kind}-${o.width}x${o.height}`} onNest={onNest}
     caption={tx(lang, 'Panel and holes', 'اللوح والفتحات')}
     stats={<><Stat label={tx(lang, 'Holes', 'الفتحات')} value={holes || '—'}/><Stat label={tx(lang, 'Open area', 'المساحة المفتوحة')} value={holes ? open.toFixed(0) : '—'} unit="%"/></>}
     tip={tx(lang, 'Walls thinner than the material thickness can burn or snap. Keep the wall at least equal to the sheet thickness for wood.', 'الجدران الأرق من سماكة الخامة قد تحترق أو تنكسر. اجعل الجدار مساوياً لسماكة الخشب على الأقل.')}>
@@ -401,7 +425,7 @@ export function RulerWorkspace({ lang }: { lang: Language }) {
   const [o, set] = useOptions<RulerOptions>(defaultRuler);
   const built = useMemo(() => build(() => rulerDrawing(o)), [o]);
   const pieces = useMemo(() => (built.drawing ? lyingFlat(built.drawing) : null), [built.drawing]);
-  return <Frame lang={lang} built={built} name={`ruler-${o.length}${o.unit}`} pieces={pieces}
+  return <Frame lang={lang} built={built} product="ruler" name={`ruler-${o.length}${o.unit}`} pieces={pieces}
     caption={tx(lang, 'Outline cuts · ticks and numbers engrave', 'الحدود للقص · التدريجات والأرقام للحفر')}
     tip={tx(lang, 'Check the first cut with a caliper. If the length is off, calibrate the machine before trusting any ruler it makes.', 'افحص أول قطعة بالقدمة. إن اختلف الطول، عايِر الماكينة قبل الاعتماد على أي مسطرة تصنعها.')}>
     <Section title={tx(lang, 'Scale', 'التدريج')} number="01">

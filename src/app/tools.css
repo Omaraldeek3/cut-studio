@@ -473,9 +473,8 @@ html[dir=rtl] .flat-edges legend { float: right; }
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
 
-/* A folded group: one sidebar entry, its tools picked at the top of the page. */
+/* A folded group: one sidebar entry; the product list picks among its tools. */
 .nav-count { margin-inline-start: auto; min-width: 22px; padding: 1px 6px; border-radius: 99px; background: var(--sunken); color: var(--ink-2); font-size: 11px; font-weight: 700; text-align: center; }
-.ready-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; margin: 0 0 16px; }
-.ready-picker a { display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r1); background: var(--surface); color: var(--ink-2); font-size: 13px; font-weight: 600; text-decoration: none; }
-.ready-picker a:hover { color: var(--ink); border-color: var(--ink-3, var(--line)); }
-.ready-picker a.selected { border-color: var(--ink); background: var(--sunken); color: var(--ink); font-weight: 750; }
+.product-chooser a { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 4px 10px; border-radius: 6px; color: var(--ink-2); font-size: 13px; font-weight: 550; white-space: nowrap; text-decoration: none; }
+.product-chooser a:hover:not(.selected) { color: var(--ink); background: color-mix(in srgb, var(--surface) 55%, transparent); }
+.product-chooser a.selected { background: var(--surface); color: var(--ink); font-weight: 700; box-shadow: var(--sh1); }

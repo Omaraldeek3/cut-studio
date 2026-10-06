@@ -7,15 +7,16 @@
 
 ![Image to vector in Cut Studio](docs/screenshots/image-to-vector-en.jpg)
 
-Cut Studio is built in and for a signage and laser workshop in Palestine. Every tool answers a job that comes through the door: a logo to cut in acrylic, an Arabic shop name for the plotter, a 6 m shop-front poster, a box of keychains to quote. The files open cleanly in CorelDRAW, Illustrator, RDWorks and LightBurn, and nothing you open ever leaves your device: there is no account and no upload. The one exception is said plainly where it happens: Design from text sends your description to Recraft, with your own key, when you ask it to draw.
+Cut Studio is built in and for a signage and laser workshop in Palestine. Every tool answers a job that comes through the door: a logo to cut in acrylic, an Arabic shop name for the plotter, a 6 m shop-front poster, a box of keychains to quote. The files open cleanly in CorelDRAW, Illustrator, RDWorks and LightBurn, and nothing you open ever leaves your device: there is no account and no upload. The one exception is said plainly where it happens: Design from text sends your description to the AI service you chose, with your own key, when you ask it to draw.
 
 ## The tools
 
 **Artwork**
 - **Image to vector.** Colour tracing for print (like Illustrator's Image Trace) and clean outlines for the laser and plotter. Circles come out round and straight edges straight. In cut-out mode every border between two colours is traced once, so nothing is cut twice, and the background is dropped. Any traced colour can be left out or swapped for your own, to match a brand's colours before print.
 - **Design from text.** Describe a design and an AI image model draws it, with your own API key, called straight from the browser: Recraft (true SVG vectors), fal.ai (FLUX and any other model it hosts), OpenAI, Google (Gemini and Imagen), Together, OpenRouter, Stability, or any service that speaks OpenAI's images API. Choose what it is for (a piece to laser cut, line art to engrave, a sticker, an icon) and the description is steered to a shape the workshop can use; one click sends it to Image to vector with the matching settings for cut lines and DXF. The key is never sent anywhere but the service you chose, and is remembered only if you ask.
+- **Remove background.** IS-Net (from DIS, Apache-2.0) finds the subject of a photo, a product, a person, a car, and takes the background away on your own graphics card. Keep the edge soft for print or make it crisp for cutting, keep only the main subject, then save a transparent PNG, engrave it, send its silhouette to Image to vector to cut round it, or show it on a product. The 90 MB model downloads once and stays in the browser.
 - **AI upscaler.** Real-ESRGAN in the browser, with a print planner (how many pixels a 6 m print needs from 5 m away), one-click common jobs, a plain explanation of every setting, a sample picture to try it on, a detail test before the long run, a before/after slider and extra sharpness for signs.
-- **Arabic lettering.** The 231 free Arabic fonts of [Harf](https://harf.omardeek.tech), any font on your computer or a font file, shaped by HarfBuzz and welded into clean cut paths. Letters cut as pieces keep their dots on: every dot, hamza and vowel mark is moved onto its letter or bridged to it, so each letter comes off the machine in one piece. Stencils get bridges instead; sign plates, mounting holes and cake toppers too.
+- **Arabic lettering.** The 231 free Arabic fonts of [Harf](https://harf.omardeek.tech), any font on your computer or a font file, shaped by HarfBuzz and welded into clean cut paths. Letters cut as pieces can keep their dots on when you turn it on: every dot, hamza and vowel mark is moved onto its letter or bridged to it, so each letter comes off the machine in one piece. Stencils get bridges instead; sign plates, mounting holes and cake toppers too.
 - **Contour & offset.** Round-cornered offsets for acrylic letter bases, weeding borders and print-and-cut sticker lines.
 - **Vector cleanup.** Repairs any SVG, DXF or CorelDRAW file for cutting: removes overlapping lines (Delete Overlap), joins small gaps and cuts thousands of nodes down to lines and arcs.
 - **Resize & repeat.**
@@ -24,12 +25,13 @@ Cut Studio is built in and for a signage and laser workshop in Palestine. Every 
 - **Material nesting**, **box maker** (finger joints, lids, sliding lids, drawers, dividers, 3D view), **living hinge**, **grille patterns**, **engraving prep** (eight dithering methods), **power & speed test card** (one colour layer per square, settings as CSV), **fit test**, **CNC prep** and **feeds & speeds**.
 
 **Ready-made**
-- **Product templates** (QR stand, phone stand, menu holder, door sign, gift box, desk organizer and more), **polygon box**, **keychains & tags** (Arabic text, any shape), **trophy base**, **gear maker** (involute gears, meshing pairs, turning 3D view), **jigsaw puzzle**, **ruler maker**, and a link to [Shakl](https://shakl.omardeek.tech) for 3D models.
+- **Product templates** (QR stand, phone stand, menu holder, door sign, gift box, desk organizer and more), **polygon box**, **keychains & tags** (Arabic text, any shape), **trophy base**, **gear maker** (involute gears, meshing pairs, turning 3D view), **jigsaw puzzle**, **ruler maker**, each with a 3D view of the parts put together, and links to [Shakl](https://shakl.omardeek.tech) for 3D models and [Naqsh](https://naqsh.omardeek.tech) for Arabic ornament as SVG.
 
 **Print**
 - **Poster tiling** into printer-width panels with overlap and eyelet marks, **print sheets** for stickers, labels and sublimation, and a **DPI calculator**.
 
 **Business**
+- **Product mockup**: the design as an acrylic sign on a wall, 3D cut letters, engraved wood, a shop sign by day or lit at night, LED neon, a T-shirt, a mug or a die-cut sticker, or placed on a photo of the customer's own shop front, saved as a picture to send before anything is cut.
 - **Job quote**: material, machine time from the artwork, labour, overhead and profit down to a price per piece, and a quote ready to send by WhatsApp.
 
 ## Files that are ready to cut

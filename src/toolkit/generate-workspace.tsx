@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { slugs, tx, type Language } from './copy';
 import { ErrorNote, Help, Icon, Range, Section, Stat, Toggle } from './ui';
 import { saveFile } from './image-input';
+import type { ImageTarget } from './cutout-workspace';
 import {
   composePrompt, estimate, MAX_COUNT, MAX_DESCRIPTION, PROVIDERS, provider as providerOf, purposes, ratios,
   storeBase, storedBase, storedKey, storedProvider, storeKey, storeProvider, toPng, watchStore,
@@ -31,7 +32,7 @@ const extension = (type: string) => (/svg/.test(type) ? 'svg' : /jpe?g/.test(typ
 
 let nextId = 1;
 
-export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: (handover: Handover) => void }) {
+export function GenerateWorkspace({ lang, onSendImage }: { lang: Language; onSendImage: (handover: Handover, to: ImageTarget) => void }) {
   // The service used last time, and a key remembered on an earlier visit, are used until the user picks another.
   const lastProvider = useSyncExternalStore(watchStore, storedProvider, () => 'recraft' as ProviderId);
   const [choice, setChoice] = useState<ProviderId | null>(null);
@@ -141,10 +142,15 @@ export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: 
     try {
       const png = await toPng(design.result);
       const preset = purposes.find(p => p.id === design.purpose)?.trace || undefined;
-      onTrace({ file: new File([png], `design-${design.id}.png`, { type: 'image/png' }), preset });
+      onSendImage({ file: new File([png], `design-${design.id}.png`, { type: 'image/png' }), preset }, 'trace');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
+  }
+
+  async function toMockup(design: Design) {
+    try { onSendImage({ file: new File([await toPng(design.result)], `design-${design.id}.png`, { type: 'image/png' }) }, 'mockup'); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   }
 
   async function savePicture(design: Design) {
@@ -274,6 +280,7 @@ export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: 
               <figcaption>
                 <button className="button dark" type="button" onClick={() => void toTracer(design)}>{tx(lang, 'Prepare for cutting', 'جهّزه للقص')} ↗</button>
                 {design.result.svg && <button className="button secondary" type="button" onClick={() => saveFile(design.result.svg!, `design-${design.id}.svg`, 'image/svg+xml')}><Icon name="download" size={16} />SVG</button>}
+                <button className="button secondary" type="button" onClick={() => void toMockup(design)}><Icon name="mockup" size={16} />{tx(lang, 'On a product', 'على منتج')}</button>
                 <button className="button secondary" type="button" onClick={() => void savePicture(design)}><Icon name="download" size={16} />{design.result.svg ? 'PNG' : extension(design.result.blob.type).toUpperCase()}</button>
                 <small className="micro gen-by" dir="ltr">{design.by}</small>
               </figcaption>

@@ -136,6 +136,7 @@ const EXACT: Record<string, string> = {
   'Sticker width must be above zero.': 'عرض الملصق يجب أن يكون أكبر من صفر.',
   'That is more than 6,000 holes. Make the holes larger.': 'هذا أكثر من ٦٬٠٠٠ ثقب. كبّر الثقوب.',
   'That makes more than 200 panels. Check the sizes.': 'هذا ينتج أكثر من ٢٠٠ لوحة. راجع المقاسات.',
+  'The AI model could not be started in this browser.': 'تعذّر تشغيل نموذج الذكاء الاصطناعي في هذا المتصفح.',
   'The AI model could not be downloaded. Check the connection and try again.': 'تعذّر تنزيل نموذج الذكاء الاصطناعي. تحقق من الاتصال وحاول مجدداً.',
   'The CDR converter returned an unreadable document.': 'محوّل CDR أعاد ملفاً لا يمكن قراءته.',
   'The design could not be encoded.': 'تعذّر حفظ التصميم.',

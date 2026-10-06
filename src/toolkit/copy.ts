@@ -1,5 +1,5 @@
 export type Language='en'|'ar';
-export const toolIds=['trace','generate','upscale','lettering','contour','clean','repeat','nest','box','hinge','pattern','engrave','testcard','kerf','cnc','feeds','tiles','sheet','dpi','quote','templates','polybox','tag','trophy','gear','puzzle','ruler'] as const;
+export const toolIds=['trace','generate','cutout','upscale','lettering','contour','clean','repeat','nest','box','hinge','pattern','engrave','testcard','kerf','cnc','feeds','tiles','sheet','dpi','quote','mockup','templates','polybox','tag','trophy','gear','puzzle','ruler'] as const;
 export type ToolId=typeof toolIds[number];
 /** A site of its own that sits in the sidebar next to the tools. */
 export type OutsideLink={href:string;icon:'cube'|'ornament';title:[string,string];note:[string,string];cta:[string,string];ask:[string,string]};
@@ -11,10 +11,10 @@ export const naqsh:OutsideLink={href:NAQSH_URL,icon:'ornament',cta:['Open Naqsh'
  *  The working tools come first; the makers of one finished object (a gear,
  *  a puzzle, a polygon box) sit together at the end as ready-made templates. */
 export const groups:{id:string;title:[string,string];tools:ToolId[];links?:OutsideLink[]}[]=[
-  {id:'artwork',title:['Artwork','التصميم'],tools:['trace','generate','upscale','lettering','contour','clean','repeat'],links:[naqsh]},
+  {id:'artwork',title:['Artwork','التصميم'],tools:['trace','generate','cutout','upscale','lettering','contour','clean','repeat'],links:[naqsh]},
   {id:'laser',title:['Laser & CNC','الليزر والقص'],tools:['nest','box','hinge','pattern','engrave','testcard','kerf','cnc','feeds']},
   {id:'print',title:['Print','الطباعة'],tools:['tiles','sheet','dpi']},
-  {id:'business',title:['Business','الأعمال'],tools:['quote']},
+  {id:'business',title:['Business','الأعمال'],tools:['quote','mockup']},
   {id:'ready',title:['Ready-made','قوالب جاهزة'],tools:['templates','polybox','tag','trophy','gear','puzzle','ruler'],links:[shakl,naqsh]},
 ];
 export const groupOf=(id:ToolId)=>groups.find(g=>g.tools.includes(id))!;
@@ -22,7 +22,7 @@ export const groupOf=(id:ToolId)=>groups.find(g=>g.tools.includes(id))!;
 /** Each tool's address. English words in both languages, so a link stays
  *  readable when it is copied into a chat or a search result. */
 export const slugs:Record<ToolId,string>={
-  trace:'image-to-vector',generate:'ai-design',upscale:'ai-image-upscaler',lettering:'arabic-lettering',contour:'contour-offset',clean:'vector-cleanup',repeat:'resize-repeat',
+  trace:'image-to-vector',generate:'ai-design',cutout:'remove-background',mockup:'product-mockup',upscale:'ai-image-upscaler',lettering:'arabic-lettering',contour:'contour-offset',clean:'vector-cleanup',repeat:'resize-repeat',
   nest:'nesting',box:'box-maker',gear:'gear-maker',hinge:'living-hinge',puzzle:'jigsaw-puzzle',tag:'keychains-tags',pattern:'grille-patterns',
   engrave:'engraving-prep',testcard:'laser-test-card',kerf:'kerf-fit-test',trophy:'trophy-base',polybox:'polygon-box',templates:'product-templates',cnc:'cnc-prep',feeds:'cnc-feeds-speeds',ruler:'ruler-maker',tiles:'poster-tiling',sheet:'print-sheet',dpi:'dpi-calculator',quote:'job-quote',
 };
@@ -33,6 +33,8 @@ export const defaultTool:ToolId='trace';
 /** Titles for search results: what someone would type to find the tool. */
 export const seoTitles:Record<ToolId,[string,string]>={
   trace:['Image to vector: trace logos and pictures to SVG and DXF','تحويل الصور إلى فيكتور SVG و DXF'],
+  cutout:['Remove the background from a photo, free and on your device: products, people, cars','إزالة خلفية الصور مجاناً وعلى جهازك: منتجات وأشخاص وسيارات'],
+  mockup:['Product mockups for signs, acrylic, wood, neon, T-shirts and mugs','معاينة التصميم على المنتج: لافتات وأكريليك وخشب ونيون وتيشيرتات وأكواب'],
   generate:['AI design from a description: vectors for laser cutting, stickers and print','تصميم بالذكاء الاصطناعي من وصف: فيكتور للقص بالليزر والستيكرات والطباعة'],
   upscale:['AI image upscaler for large-format print','تكبير الصور بالذكاء الاصطناعي للطباعة الكبيرة'],
   lettering:['Arabic lettering to cut paths for laser and vinyl','تحويل الكتابة العربية إلى مسارات قص للّيزر والفينيل'],
@@ -61,7 +63,7 @@ export const seoTitles:Record<ToolId,[string,string]>={
   quote:['Laser and print job quote calculator','حاسبة عرض سعر لأعمال الليزر والطباعة'],
 };
 export const titles:Record<ToolId,[string,string]>={templates:['Product templates','قوالب المنتجات'],polybox:['Polygon box','صندوق مضلع'],trophy:['Trophy base','قاعدة الدروع'],cnc:['CNC prep','تجهيز CNC'],feeds:['Feeds & speeds','السرعات والتغذية'],nest:['Material nesting','ترتيب القطع'],trace:['Image to vector','تحويل صورة إلى فيكتور'],clean:['Vector cleanup','تنظيف الفيكتور'],repeat:['Resize & repeat','المقاس والتكرار'],quote:['Job quote','عرض السعر'],kerf:['Fit test','اختبار التعشيق'],engrave:['Engraving prep','تجهيز صور الحفر'],box:['Box maker','صانع الصناديق'],
-  generate:['Design from text','تصميم من وصف'],upscale:['AI upscaler','تكبير الصور بالذكاء الاصطناعي'],tiles:['Poster tiling','تقسيم البوستر'],contour:['Contour & offset','الكونتور والإزاحة'],lettering:['Arabic lettering','الكتابة العربية'],sheet:['Print sheet','ورقة الطباعة'],
+  generate:['Design from text','تصميم من وصف'],cutout:['Remove background','إزالة الخلفية'],mockup:['Product mockup','معاينة على منتج'],upscale:['AI upscaler','تكبير الصور بالذكاء الاصطناعي'],tiles:['Poster tiling','تقسيم البوستر'],contour:['Contour & offset','الكونتور والإزاحة'],lettering:['Arabic lettering','الكتابة العربية'],sheet:['Print sheet','ورقة الطباعة'],
   hinge:['Living hinge','المفصل المرن'],gear:['Gear maker','صانع التروس'],puzzle:['Jigsaw puzzle','صانع البازل'],tag:['Tags & keychains','الميداليات والبطاقات'],pattern:['Grille patterns','نقوش التهوية'],testcard:['Power & speed test','بطاقة اختبار القوة والسرعة'],ruler:['Ruler maker','صانع المساطر'],dpi:['Resolution & DPI','الدقة والـDPI']};
 export const descriptions:Record<ToolId,[string,string]>={
   nest:['A better fit for every piece. Arrange your outlines and make the most of your material.','رتّب حدود القطع للاستفادة من مساحة الخامة وتقليل الهدر.'],
@@ -77,6 +79,8 @@ export const descriptions:Record<ToolId,[string,string]>={
   kerf:['Find the fit that feels right. Generate a slotted coupon for your material.','أنشئ عينة بفتحات مختلفة لاختيار المقاس الأنسب لتعشيق الخامة.'],
   engrave:['Prepare photos for CO2 and fibre engraving at the real line resolution, with material presets and eight dithering methods.','جهّز الصور للحفر بليزر CO2 والفايبر بدقة الأسطر الحقيقية، مع إعدادات جاهزة للخامات وثماني طرق تنقيط.'],
   box:['Design a finger-joint box to your size and material, ready to cut.','صمّم صندوقاً بتعشيق الأسنان بمقاسك وسماكة خامتك، جاهزاً للقص.'],
+  cutout:['An AI model finds the subject of a photo and takes the background away, on this computer. Then save it, engrave it, cut round it or show it on a product.','يجد نموذج ذكاء اصطناعي العنصر الرئيسي في الصورة ويزيل الخلفية، على جهازك. ثم احفظه أو احفره أو قصّ حوله أو اعرضه على منتج.'],
+  mockup:['See a design as an acrylic sign, cut letters, engraved wood, a lit shop sign, neon, a T-shirt, a mug or a sticker, or on a photo of the shop, and send it to the customer.','شاهد التصميم لوحة أكريليك أو حروفاً بارزة أو حفراً على خشب أو لافتة مضيئة أو نيون أو تيشيرت أو كوباً أو ستيكر، أو على صورة المحل، وأرسله للزبون.'],
   generate:['Describe a design and an AI image model draws it, with your own key for Recraft, FLUX on fal.ai, OpenAI, Google and more: a silhouette ready to cut, line art to engrave, or a sticker in flat colours.','صف التصميم ويرسمه نموذج صور بالذكاء الاصطناعي بمفتاحك الخاص: Recraft أو FLUX عبر fal.ai أو OpenAI أو Google وغيرها. شكل جاهز للقص، أو رسم خطي للحفر، أو ستيكر بألوان مسطحة.'],
   upscale:['Enlarge a picture up to 8×: an AI model adds believable detail up to 4×, and a smooth enlargement takes it further. Save it with the right DPI for a large print.','كبّر الصورة حتى ٨ أضعاف: نموذج ذكاء اصطناعي يضيف تفاصيل مقنعة حتى ٤ أضعاف، ثم يكمل تكبير ناعم ما بعدها. واحفظها بالدقة المناسبة للطباعة الكبيرة.'],
   tiles:['Split a large print into panels your printer can take, with overlap, numbers and marks for fitting.','قسّم الطباعة الكبيرة إلى ألواح بعرض طابعتك، مع تداخل وأرقام وعلامات للتركيب.'],

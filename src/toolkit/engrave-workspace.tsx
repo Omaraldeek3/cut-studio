@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { tx, type Language } from './copy';
 import { ErrorNote, Icon, NumberField, Range, Section, Stat, Toggle } from './ui';
 import { bytes, ImageDrop, IMAGE_TYPES, saveFile, usePastedImage } from './image-input';
+import type { Handover } from './generate-workspace';
 import { defaultEngrave, materials, toBmp, type Dither, type EngraveOptions } from './engrave';
 import { PngStream } from './upscale-core';
 
@@ -28,7 +29,7 @@ const methods: { id: Dither; en: string; ar: string }[] = [
 type Source = { file: File; name: string; width: number; height: number; url: string };
 type Output = { dots: Uint8Array; width: number; height: number; key: string };
 
-export function EngraveWorkspace({ lang }: { lang: Language }) {
+export function EngraveWorkspace({ lang, incoming }: { lang: Language; incoming?: Handover | null }) {
   const [source, setSource] = useState<Source | null>(null);
   const [material, setMaterial] = useState('wood');
   const [options, setOptions] = useState<EngraveOptions>({ ...defaultEngrave, ...materials[0].options });
@@ -54,6 +55,12 @@ export function EngraveWorkspace({ lang }: { lang: Language }) {
     } catch { setError(tx(lang, 'This image could not be opened.', 'تعذّر فتح الصورة.')); }
   }, [lang]);
   const onPaste = useCallback((file: File) => { void load(file); }, [load]);
+  // A picture handed over from another tool, such as a photo without its background.
+  useEffect(() => {
+    if (!incoming) return;
+    const timer = setTimeout(() => void load(incoming.file), 0);
+    return () => clearTimeout(timer);
+  }, [incoming, load]);
   usePastedImage(onPaste);
 
   const heightMm = source ? (widthMm * source.height) / source.width : 0;

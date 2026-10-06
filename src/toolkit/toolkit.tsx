@@ -14,6 +14,8 @@ import { EngraveWorkspace } from './engrave-workspace';
 import { VectorizeWorkspace } from './vectorize-workspace';
 import { UpscaleWorkspace } from './upscale-workspace';
 import { GenerateWorkspace, type Handover } from './generate-workspace';
+import { CutoutWorkspace, type ImageTarget } from './cutout-workspace';
+import { MockupWorkspace } from './mockup-workspace';
 import { TilingWorkspace } from './tiling-workspace';
 import { ContourWorkspace } from './contour-workspace';
 import { LetteringWorkspace } from './lettering-workspace';
@@ -43,13 +45,17 @@ export default function Toolkit({lang}:{lang:Language}){
  const props={lang,drawing,setDrawing,filename,setFilename,onNest};
  // Hands artwork from one tool to another, e.g. lettering to contour.
  function onSend(d:Drawing,tool:ToolId,name='artwork.svg'){setDrawing(d);setFilename(name);setActive(tool);}
- // A picture for the tracer, such as a generated design on its way to cutting lines.
- const [handover,setHandover]=useState<Handover|null>(null);
- function onTrace(h:Handover){setHandover(h);setActive('trace');}
+ // A picture handed from one tool to the next: a generated design to the tracer,
+ // a photo without its background to the engraver or onto a product.
+ const [handover,setHandover]=useState<(Handover&{to:ImageTarget|'cutout'})|null>(null);
+ function onSendImage(h:Handover,to:ImageTarget|'cutout'){setHandover({...h,to});setActive(to);}
+ const incoming=(to:ImageTarget|'cutout')=>handover?.to===to?handover:null;
  function workspace(){switch(active){
   case 'nest':return <NestWorkspace {...props} onQuote={onQuote}/>;
-  case 'trace':return <VectorizeWorkspace lang={lang} onNest={onNest} incoming={handover}/>;
-  case 'generate':return <GenerateWorkspace lang={lang} onTrace={onTrace}/>;
+  case 'trace':return <VectorizeWorkspace lang={lang} onNest={onNest} incoming={incoming('trace')}/>;
+  case 'generate':return <GenerateWorkspace lang={lang} onSendImage={onSendImage}/>;
+  case 'cutout':return <CutoutWorkspace lang={lang} onSendImage={onSendImage} incoming={incoming('cutout')}/>;
+  case 'mockup':return <MockupWorkspace lang={lang} incoming={incoming('mockup')}/>;
   case 'upscale':return <UpscaleWorkspace lang={lang}/>;
   case 'tiles':return <TilingWorkspace lang={lang}/>;
   case 'contour':return <ContourWorkspace {...props}/>;
@@ -60,7 +66,7 @@ export default function Toolkit({lang}:{lang:Language}){
   case 'kerf':return <KerfWorkspace lang={lang}/>;
   case 'cnc':return <CncWorkspace {...props}/>;
   case 'feeds':return <FeedsWorkspace lang={lang}/>;
-  case 'engrave':return <EngraveWorkspace lang={lang}/>;
+  case 'engrave':return <EngraveWorkspace lang={lang} incoming={incoming('engrave')}/>;
   case 'box':return <BoxWorkspace lang={lang} onNest={onNest}/>;
   case 'hinge':return <HingeWorkspace lang={lang} onNest={onNest}/>;
   case 'gear':return <GearWorkspace lang={lang} onNest={onNest}/>;

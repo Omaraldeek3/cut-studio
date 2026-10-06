@@ -2,6 +2,7 @@ import type { Contour, Drawing, Point, Shape } from './types';
 import { circle, roundedRect } from './generators';
 import { bounds, moveShape } from './geometry';
 import { buildBox, defaultBoxOptions, type BoxOptions } from './box';
+import { boxPieces, flat, front, openings, side, SHEET, type Piece } from './assembly';
 
 /* Ready-made workshop products, each from flat sheet and a few settings.
    Parts join with tabs through slots: a slot is the material thickness plus
@@ -10,7 +11,9 @@ import { buildBox, defaultBoxOptions, type BoxOptions } from './box';
 
 export type TemplateId = 'qr' | 'menu' | 'door' | 'easel' | 'phone' | 'card' | 'napkin' | 'marker' | 'gift' | 'organizer';
 export type Field = { key: string; en: string; ar: string; min: number; max: number; step?: number; unit?: string };
-export type Template = { id: TemplateId; en: string; ar: string; noteEn: string; noteAr: string; fields: Field[]; defaults: Record<string, number>; build: (v: Record<string, number>) => Drawing };
+export type Template = { id: TemplateId; en: string; ar: string; noteEn: string; noteAr: string; fields: Field[]; defaults: Record<string, number>; build: (v: Record<string, number>) => Drawing;
+  /** The parts put together, for the 3D view. */
+  assemble: (v: Record<string, number>, d: Drawing) => Piece[] };
 
 const closed = (points: Point[], layer?: 'engrave'): Contour => (layer ? { closed: true, points, layer } : { closed: true, points });
 const rect = (x: number, y: number, w: number, h: number): Point[] => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }];
@@ -50,12 +53,26 @@ function leanStand(v: Record<string, number>): Drawing {
   return layout([side(1), side(2), bar(1), bar(2)]);
 }
 
+/** The two sides stand `width` apart, the front of the stand towards the viewer; each bar goes through its pair of slots. */
+function leanStandPieces(v: Record<string, number>, d: Drawing): Piece[] {
+  const { width: w, thickness: t } = v, [s1, s2, ...bars] = d.shapes, b = bounds(s1), slots = openings(s1);
+  const out = [side(s1, t, [-w / 2 - t, b.height, b.width / 2], true), side(s2, t, [w / 2, b.height, b.width / 2], true)];
+  bars.forEach((bar, i) => {
+    const slot = slots[i], bb = bounds(bar);
+    if (!slot) return;
+    const z = b.width / 2 - (slot.x + slot.width / 2), y = b.height - (slot.y + slot.height / 2);
+    out.push(front(bar, t, [-bb.width / 2, y + bb.height / 2, z - t / 2]));
+  });
+  return out;
+}
+
 /** A box from the box maker, as a product: no part labels, fingers to suit the material. */
 function box(o: Partial<BoxOptions>): ReturnType<typeof buildBox> {
   const t = o.thickness ?? 3;
   return buildBox({ ...defaultBoxOptions, sizing: 'outside', labels: false, finger: Math.max(8, 3 * t), spacing: 6, ...o });
 }
 const whole = (x: number, name: string) => { if (!Number.isInteger(x)) throw new Error(`${name}: use a whole number.`); return x; };
+const organizer = (v: Record<string, number>) => box({ type: 'open', width: v.width, depth: v.depth, height: v.height, thickness: v.thickness, columns: whole(v.across, 'Compartments across') - 1, rows: whole(v.back, 'Compartments front to back') - 1 });
 
 const T: Field = { key: 'thickness', en: 'Material thickness', ar: 'سماكة الخامة', min: 1, max: 12, step: 0.5, unit: 'mm' };
 const C: Field = { key: 'clearance', en: 'Clearance', ar: 'الخلوص', min: 0, max: 1, step: 0.05, unit: 'mm' };
@@ -75,6 +92,11 @@ export const TEMPLATES: Template[] = [
       const stand = [{ x: 0, y: 0 }, { x: depth / 2 - s / 2, y: 0 }, { x: depth / 2 - s / 2, y: leg - a }, { x: depth / 2 + s / 2, y: leg - a }, { x: depth / 2 + s / 2, y: 0 }, { x: depth, y: 0 }, { x: depth, y: leg }, { x: 0, y: leg }];
       return layout([part('plate', 'Plate', [closed(plate), closed(rect((w - q) / 2, 10, q, q), 'engrave')]), part('leg', 'Leg', [closed(stand)])]);
     },
+    // The plate faces the viewer; the leg crosses it from behind, slot into slot.
+    assemble: (v, d) => {
+      const { width: w, height: h, thickness: t } = v, leg = bounds(d.shapes[1]);
+      return [front(d.shapes[0], t, [-w / 2, h, -t / 2]), side(d.shapes[1], t, [-t / 2, leg.height, -leg.width / 2])];
+    },
   },
   {
     id: 'menu', en: 'Menu holder', ar: 'حامل منيو',
@@ -88,6 +110,10 @@ export const TEMPLATES: Template[] = [
         part('bottom', 'Solid layer', [closed(roundedRect(0, 0, w, d, 5))]),
         part('card', 'Menu card', [closed(roundedRect(0, 0, v.cardWidth, v.cardHeight, 4))]),
       ]);
+    },
+    assemble: (v, d) => {
+      const t = v.thickness, w = v.cardWidth + 30, dd = v.depth;
+      return [flat(d.shapes[1], t, [-w / 2, 0, -dd / 2]), flat(d.shapes[0], t, [-w / 2, t, -dd / 2]), front(d.shapes[2], v.cardThickness, [-v.cardWidth / 2, t + v.cardHeight, -v.cardThickness / 2], 'acrylic')];
     },
   },
   {
@@ -104,20 +130,27 @@ export const TEMPLATES: Template[] = [
       for (let i = 0; i < Math.round(v.spacers); i++) parts.push(part(`spacer-${i + 1}`, `Spacer ${i + 1}`, [closed(circle(7, 7, 7)), closed(circle(7, 7, 2))]));
       return layout(parts);
     },
+    // The sign on the door, each spacer behind a screw hole.
+    assemble: (v, d) => {
+      const { width: w, height: h } = v, [sign, ...spacers] = d.shapes, holes = openings(sign);
+      const out = [front(sign, SHEET, [-w / 2, h, 0])];
+      spacers.forEach((s, i) => { const hole = holes[i % Math.max(1, holes.length)]; if (hole) out.push(front(s, SHEET, [-w / 2 + hole.x + hole.width / 2 - 7, h - hole.y - hole.height / 2 + 7, -SHEET])); });
+      return out;
+    },
   },
   {
     id: 'easel', en: 'Display easel', ar: 'ستاند عرض',
     noteEn: 'Push the two bars through the slots of both sides. The item rests on the ledge and leans back at the angle you set.', noteAr: 'أدخل العارضتين في فتحات الجانبين. تستند القطعة على الحافة وتميل للخلف بالزاوية المحددة.',
     fields: [{ key: 'width', en: 'Width between sides', ar: 'العرض بين الجانبين', min: 40, max: 600, unit: 'mm' }, { key: 'height', en: 'Height', ar: 'الارتفاع', min: 60, max: 400, unit: 'mm' }, { key: 'angle', en: 'Lean angle', ar: 'زاوية الميل', min: 55, max: 85, unit: '°' }, { key: 'item', en: 'Item thickness', ar: 'سماكة القطعة المعروضة', min: 1, max: 30, step: 0.5, unit: 'mm' }, T, C],
     defaults: { width: 120, height: 120, angle: 70, item: 4, thickness: 3, clearance: 0.2 },
-    build: leanStand,
+    build: leanStand, assemble: leanStandPieces,
   },
   {
     id: 'phone', en: 'Phone stand', ar: 'حامل جوال',
     noteEn: 'Push the two bars through the slots of both sides. The phone rests on the two ledges; the charging cable passes up between the sides.', noteAr: 'أدخل العارضتين في فتحات الجانبين. يستند الجوال على الحافتين، ويمر سلك الشحن بين الجانبين.',
     fields: [{ key: 'width', en: 'Width between sides', ar: 'العرض بين الجانبين', min: 30, max: 200, unit: 'mm' }, { key: 'height', en: 'Height', ar: 'الارتفاع', min: 60, max: 250, unit: 'mm' }, { key: 'angle', en: 'Lean angle', ar: 'زاوية الميل', min: 55, max: 85, unit: '°' }, { key: 'item', en: 'Phone thickness with case', ar: 'سماكة الجوال مع الغطاء', min: 5, max: 30, step: 0.5, unit: 'mm' }, T, C],
     defaults: { width: 50, height: 100, angle: 65, item: 12, thickness: 3, clearance: 0.2 },
-    build: leanStand,
+    build: leanStand, assemble: leanStandPieces,
   },
   {
     id: 'card', en: 'Business card holder', ar: 'حامل بطاقات عمل',
@@ -132,6 +165,12 @@ export const TEMPLATES: Template[] = [
         part('back', 'Back', [closed(tabbedPanel(w, 45, xs, tab, t))]),
         part('lip', 'Front lip', [closed(tabbedPanel(w, 15, xs, tab, t))]),
       ]);
+    },
+    // The back and the lip stand in the base's two rows of slots, tabs down.
+    assemble: (v, d) => {
+      const { width: w, stack, thickness: t } = v, dd = stack + 2 * t + 16, [base, back, lip] = d.shapes;
+      const at = (panel: Shape, y: number) => front(panel, t, [-w / 2, bounds(panel).height, -dd / 2 + y - t / 2]);
+      return [flat(base, t, [-w / 2, 0, -dd / 2]), at(back, 8 + t / 2), at(lip, 8 + t + stack + t / 2)];
     },
   },
   {
@@ -150,6 +189,12 @@ export const TEMPLATES: Template[] = [
         part('side-2', 'Side 2', [closed(panel), { ...window, points: [...window.points] }]),
       ]);
     },
+    // Both sides stand across the base in its slots, the napkins between them.
+    assemble: (v, d) => {
+      const { width: w, gap, thickness: t } = v, sideLength = w + 10, dd = gap + 2 * t + 16, [base, s1, s2] = d.shapes;
+      const at = (panel: Shape, x: number) => side(panel, t, [-dd / 2 + x - t / 2, bounds(panel).height, -sideLength / 2]);
+      return [flat(base, t, [-dd / 2, 0, -sideLength / 2]), at(s1, 8 + t / 2), at(s2, dd - 8 - t / 2)];
+    },
   },
   {
     id: 'marker', en: 'Plant markers', ar: 'شواخص النباتات',
@@ -161,6 +206,8 @@ export const TEMPLATES: Template[] = [
       const outline = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: lh }, { x: w / 2 + sw / 2, y: lh }, { x: w / 2 + sw / 2, y: lh + l - sw }, { x: w / 2, y: lh + l }, { x: w / 2 - sw / 2, y: lh + l - sw }, { x: w / 2 - sw / 2, y: lh }, { x: 0, y: lh }];
       return layout(Array.from({ length: Math.round(v.count) }, (_, i) => part(`marker-${i + 1}`, `Marker ${i + 1}`, [closed(outline), closed(roundedRect(4, 4, w - 8, lh - 8, 2), 'engrave')])));
     },
+    // Standing in a row, as in a bed of soil.
+    assemble: (v, d) => d.shapes.map(s => { const b = bounds(s); return front(s, SHEET, [b.x - d.width / 2, b.height, 0]); }),
   },
   {
     id: 'gift', en: 'Gift box, sliding lid', ar: 'علبة هدايا بغطاء منزلق',
@@ -178,15 +225,22 @@ export const TEMPLATES: Template[] = [
       const area = closed(roundedRect(b.x + 8, top, b.width - 16, bottom - top, 3), 'engrave');
       return { ...r.drawing, shapes: r.drawing.shapes.map((s, k) => (k === i ? { ...s, contours: [...s.contours, area] } : s)) };
     },
+    assemble: v => { const r = box({ type: 'sliding', width: v.width, depth: v.depth, height: v.height, thickness: v.thickness, clearance: v.clearance }); return boxPieces(r.parts, r.outside); },
   },
   {
     id: 'organizer', en: 'Desk organizer', ar: 'منظم مكتب',
     noteEn: 'An open tray split into compartments: the dividers slot into each other and lock into the walls. Set both to 1 for one open space.', noteAr: 'صينية مفتوحة مقسمة إلى خانات: تتداخل الفواصل مع بعضها وتُثبّت في الجدران. اجعل الاثنين 1 لمساحة واحدة مفتوحة.',
     fields: [{ key: 'width', en: 'Width', ar: 'العرض', min: 60, max: 600, unit: 'mm' }, { key: 'depth', en: 'Depth', ar: 'العمق', min: 40, max: 400, unit: 'mm' }, { key: 'height', en: 'Height', ar: 'الارتفاع', min: 20, max: 250, unit: 'mm' }, { key: 'across', en: 'Compartments across', ar: 'الخانات بالعرض', min: 1, max: 10 }, { key: 'back', en: 'Compartments front to back', ar: 'الخانات من الأمام للخلف', min: 1, max: 6 }, T],
     defaults: { width: 240, depth: 120, height: 80, across: 4, back: 2, thickness: 3 },
-    build: v => box({ type: 'open', width: v.width, depth: v.depth, height: v.height, thickness: v.thickness, columns: whole(v.across, 'Compartments across') - 1, rows: whole(v.back, 'Compartments front to back') - 1 }).drawing,
+    build: v => organizer(v).drawing,
+    assemble: v => { const r = organizer(v); return boxPieces(r.parts, r.outside); },
   },
 ];
+
+/** The template put together, for the 3D view; null when its settings do not build. */
+export function assembleTemplate(id: TemplateId, values: Record<string, number>, drawing: Drawing): Piece[] | null {
+  try { return TEMPLATES.find(x => x.id === id)!.assemble(values, drawing); } catch { return null; }
+}
 
 export function buildTemplate(id: TemplateId, values: Record<string, number>): Drawing {
   const t = TEMPLATES.find(x => x.id === id);

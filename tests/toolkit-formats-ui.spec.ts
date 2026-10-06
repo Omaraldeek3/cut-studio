@@ -93,14 +93,21 @@ test('the makers of one finished object sit together under Ready-made, with Shak
  await expect(page.getByText('قوالب جاهزة',{exact:true}).first()).toBeVisible();
  await page.goto('/en/vector-cleanup');
  const section=page.locator('.nav-group').filter({hasText:'Ready-made'});
- for(const name of ['Product templates','Polygon box','Tags & keychains','Trophy base','Gear maker','Jigsaw puzzle','Ruler maker']) await expect(section.getByRole('link',{name,exact:true})).toBeVisible();
+ // The group is one entry in the sidebar; its makers are picked on the page.
+ await expect(section.getByRole('link',{name:'All ready-made templates'})).toBeVisible();
+ for(const name of ['Polygon box','Gear maker','Ruler maker']) await expect(section.getByRole('link',{name,exact:true})).toHaveCount(0);
+ await section.getByRole('link',{name:'All ready-made templates'}).click();
+ await expect(page).toHaveURL(/\/en\/product-templates$/);
+ const picker=page.getByRole('navigation',{name:'All ready-made templates'});
+ for(const name of ['Product templates','Polygon box','Tags & keychains','Trophy base','Gear maker','Jigsaw puzzle','Ruler maker']) await expect(picker.getByRole('link',{name,exact:true})).toBeVisible();
  await expect(section.getByRole('link',{name:/Shakl/})).toHaveAttribute('href','https://shakl.omardeek.tech');
  await expect(section.getByRole('link',{name:/Naqsh/})).toHaveAttribute('href','https://naqsh.omardeek.tech');
  // Naqsh's SVG ornament also sits with the artwork tools.
  await expect(page.locator('.nav-group').filter({hasText:'Artwork'}).getByRole('link',{name:/Naqsh/})).toBeVisible();
  // The box maker stays with the working tools.
  await expect(page.locator('.nav-group').filter({hasText:'Laser & CNC'}).getByRole('link',{name:'Box maker',exact:true})).toBeVisible();
- await page.getByRole('link',{name:'Gear maker',exact:true}).click();
+ await picker.getByRole('link',{name:'Gear maker',exact:true}).click();
+ await expect(page.locator('.nav-group').filter({hasText:'Ready-made'}).getByRole('link',{name:'All ready-made templates'})).toHaveAttribute('aria-current','page');
  await expect(page.locator('.shakl-card').first()).toContainText('Looking for a ready 3D model?');
  await expect(page.locator('.shakl-card').nth(1)).toContainText('Need Arabic ornament as SVG?');
  await page.getByRole('link',{name:'Box maker',exact:true}).click();

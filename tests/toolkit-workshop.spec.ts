@@ -20,7 +20,9 @@ async function openTool(page: Page, name: string) {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto("/en/nesting");
-  await page.getByRole("link", { name, exact: true }).click();
+  // The ready-made makers are picked on the page of the one sidebar entry.
+  if (!(await page.getByRole("link", { name, exact: true }).count())) await page.getByRole("link", { name: "All ready-made templates" }).click();
+  await page.getByRole("link", { name, exact: true }).first().click();
   return errors;
 }
 

@@ -10,12 +10,13 @@ export const naqsh:OutsideLink={href:NAQSH_URL,icon:'ornament',cta:['Open Naqsh'
 /** The tools grouped the way a workshop thinks about them, in toolIds order.
  *  The working tools come first; the makers of one finished object (a gear,
  *  a puzzle, a polygon box) sit together at the end as ready-made templates. */
-export const groups:{id:string;title:[string,string];tools:ToolId[];links?:OutsideLink[]}[]=[
+/** A folded group shows in the sidebar as one entry, `entry`; its tools are picked on the page. */
+export const groups:{id:string;title:[string,string];tools:ToolId[];links?:OutsideLink[];entry?:[string,string]}[]=[
   {id:'artwork',title:['Artwork','التصميم'],tools:['trace','generate','cutout','upscale','lettering','contour','clean','repeat'],links:[naqsh]},
   {id:'laser',title:['Laser & CNC','الليزر والقص'],tools:['nest','box','hinge','pattern','engrave','testcard','kerf','cnc','feeds']},
   {id:'print',title:['Print','الطباعة'],tools:['tiles','sheet','dpi']},
   {id:'business',title:['Business','الأعمال'],tools:['quote','mockup']},
-  {id:'ready',title:['Ready-made','قوالب جاهزة'],tools:['templates','polybox','tag','trophy','gear','puzzle','ruler'],links:[shakl,naqsh]},
+  {id:'ready',title:['Ready-made','قوالب جاهزة'],tools:['templates','polybox','tag','trophy','gear','puzzle','ruler'],links:[shakl,naqsh],entry:['All ready-made templates','كل القوالب الجاهزة']},
 ];
 export const groupOf=(id:ToolId)=>groups.find(g=>g.tools.includes(id))!;
 

@@ -14,7 +14,9 @@ test("a purpose steers the description and the cost follows the model", () => {
   expect(composePrompt("x".repeat(900), free)).toHaveLength(600);
   expect(estimate(provider("recraft").models[0], 3)).toBeCloseTo(0.24);
   // Only Recraft's prices are known; other services bill at their own.
-  expect(estimate(provider("fal").models[0], 3)).toBeUndefined();
+  // Every listed model carries a price; a model typed in by hand has none.
+  for (const p of [provider("fal"), provider("openai"), provider("google"), provider("together"), provider("stability")]) for (const m of p.models) expect(m.price, m.id).toBeGreaterThan(0);
+  expect(estimate(undefined, 3)).toBeUndefined();
 });
 
 test("each service gets the nearest size it offers", () => {
@@ -112,7 +114,13 @@ test("FLUX through fal.ai: any model typed in, the key sent to fal only, the pic
   expect(sent[0].body).toMatchObject({ num_images: 2, image_size: { width: 1024, height: 576 }, sync_mode: true });
   // A picture, not a vector: no SVG button, and the price is the service's own.
   await expect(page.locator(".gen-card").first().getByRole("button", { name: "SVG" })).toHaveCount(0);
-  await expect(page.getByText(/fal\.ai bills your account at its own prices/)).toBeVisible();
+  // A typed name that is a listed model gets its price; an unlisted one points to fal's prices.
+  await expect(page.getByText(/About \$0\.05 from your fal\.ai balance/)).toBeVisible();
+  await page.getByLabel("Model name, as the service writes it").fill("fal-ai/some-new-model");
+  await expect(page.getByText(/This model’s price is not listed here/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "fal.ai prices" })).toHaveAttribute("href", "https://fal.ai/pricing");
+  await page.getByLabel("Model", { exact: true }).selectOption("fal-ai/flux/schnell");
+  await expect(page.getByText(/About \$0\.006 from your fal\.ai balance/)).toBeVisible();
   const download = page.waitForEvent("download");
   await page.locator(".gen-card").first().getByRole("button", { name: "PNG" }).click();
   expect((await download).suggestedFilename()).toMatch(/^design-\d+\.png$/);

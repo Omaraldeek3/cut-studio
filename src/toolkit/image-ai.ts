@@ -6,6 +6,7 @@
    Black Forest Labs' own API, Ideogram) are reached through fal.ai instead. */
 
 export type ProviderId = 'recraft' | 'fal' | 'openai' | 'google' | 'together' | 'openrouter' | 'stability' | 'custom';
+/** `price` is the service's published price for one picture of about a megapixel, in US dollars, as of 2026. */
 export type Model = { id: string; en: string; ar: string; vector?: boolean; price?: number };
 /** One drawing as it came back: an SVG for vector models, otherwise a picture. */
 export type Result = { blob: Blob; svg?: string };
@@ -188,14 +189,14 @@ const fal: Provider = {
   steps: [['Sign up at fal.ai and add credit under Billing.', 'أنشئ حساباً في fal.ai وأضف رصيداً من صفحة Billing.'], ['Create a key under Keys and paste it here.', 'أنشئ مفتاحاً من صفحة Keys والصقه هنا.'], ['Any model on fal.ai works: copy its name from its page, such as fal-ai/flux/dev.', 'يعمل أي نموذج على fal.ai: انسخ اسمه من صفحته، مثل fal-ai/flux/dev.']],
   anyModel: true,
   models: [
-    { id: 'fal-ai/flux/schnell', en: 'FLUX.1 schnell, fast and cheap', ar: 'FLUX.1 schnell، سريع ورخيص' },
-    { id: 'fal-ai/flux/dev', en: 'FLUX.1 dev', ar: 'FLUX.1 dev' },
-    { id: 'fal-ai/flux-pro/v1.1', en: 'FLUX 1.1 pro', ar: 'FLUX 1.1 pro' },
-    { id: 'fal-ai/flux-pro/kontext/text-to-image', en: 'FLUX Kontext pro', ar: 'FLUX Kontext pro' },
-    { id: 'fal-ai/recraft/v3/text-to-image', en: 'Recraft V3 on fal', ar: 'Recraft V3 عبر fal' },
-    { id: 'fal-ai/ideogram/v3', en: 'Ideogram 3', ar: 'Ideogram 3' },
-    { id: 'fal-ai/bytedance/seedream/v4/text-to-image', en: 'Seedream 4', ar: 'Seedream 4' },
-    { id: 'fal-ai/nano-banana', en: 'Gemini image (Nano Banana)', ar: 'صور Gemini (Nano Banana)' },
+    { id: 'fal-ai/flux/schnell', price: 0.003, en: 'FLUX.1 schnell, fast and cheap', ar: 'FLUX.1 schnell، سريع ورخيص' },
+    { id: 'fal-ai/flux/dev', price: 0.025, en: 'FLUX.1 dev', ar: 'FLUX.1 dev' },
+    { id: 'fal-ai/flux-pro/v1.1', price: 0.04, en: 'FLUX 1.1 pro', ar: 'FLUX 1.1 pro' },
+    { id: 'fal-ai/flux-pro/kontext/text-to-image', price: 0.04, en: 'FLUX Kontext pro', ar: 'FLUX Kontext pro' },
+    { id: 'fal-ai/recraft/v3/text-to-image', price: 0.04, en: 'Recraft V3 on fal', ar: 'Recraft V3 عبر fal' },
+    { id: 'fal-ai/ideogram/v3', price: 0.06, en: 'Ideogram 3', ar: 'Ideogram 3' },
+    { id: 'fal-ai/bytedance/seedream/v4/text-to-image', price: 0.03, en: 'Seedream 4', ar: 'Seedream 4' },
+    { id: 'fal-ai/nano-banana', price: 0.039, en: 'Gemini image (Nano Banana)', ar: 'صور Gemini (Nano Banana)' },
   ],
   async generate(r) {
     const size = pixels(r.ratio, 1024), model = r.model.trim().replace(/^https?:\/\/(queue\.)?fal\.run\//, '').replace(/^\/+|\/+$/g, '');
@@ -211,9 +212,9 @@ const openai: Provider = {
   steps: [['Sign in at platform.openai.com and add credit under Billing.', 'سجّل الدخول في platform.openai.com وأضف رصيداً من Billing.'], ['GPT Image needs a verified organisation (Settings → Organization).', 'نماذج GPT Image تحتاج منظمة موثّقة (Settings ← Organization).'], ['Create a key under API keys and paste it here.', 'أنشئ مفتاحاً من API keys والصقه هنا.']],
   anyModel: true,
   models: [
-    { id: 'gpt-image-1', en: 'GPT Image 1', ar: 'GPT Image 1' },
-    { id: 'gpt-image-1-mini', en: 'GPT Image 1 mini, cheaper', ar: 'GPT Image 1 mini، أرخص' },
-    { id: 'dall-e-3', en: 'DALL·E 3', ar: 'DALL·E 3' },
+    { id: 'gpt-image-1', price: 0.042, en: 'GPT Image 1', ar: 'GPT Image 1' },
+    { id: 'gpt-image-1-mini', price: 0.011, en: 'GPT Image 1 mini, cheaper', ar: 'GPT Image 1 mini، أرخص' },
+    { id: 'dall-e-3', price: 0.04, en: 'DALL·E 3', ar: 'DALL·E 3' },
   ],
   async generate(r) {
     const dalle = /^dall-e/.test(r.model), wide = parts(r.ratio).w > parts(r.ratio).h, tall = parts(r.ratio).w < parts(r.ratio).h;
@@ -244,10 +245,10 @@ const google: Provider = {
   steps: [['Sign in at aistudio.google.com with a Google account.', 'سجّل الدخول في aistudio.google.com بحساب Google.'], ['Create an API key and paste it here.', 'أنشئ مفتاح API والصقه هنا.'], ['Image models need billing turned on for the key\'s project.', 'نماذج الصور تحتاج تفعيل الفوترة لمشروع المفتاح.']],
   anyModel: true,
   models: [
-    { id: 'gemini-2.5-flash-image', en: 'Gemini 2.5 Flash Image (Nano Banana)', ar: 'Gemini 2.5 Flash Image (Nano Banana)' },
-    { id: 'imagen-4.0-generate-001', en: 'Imagen 4', ar: 'Imagen 4' },
-    { id: 'imagen-4.0-fast-generate-001', en: 'Imagen 4 Fast', ar: 'Imagen 4 Fast' },
-    { id: 'imagen-4.0-ultra-generate-001', en: 'Imagen 4 Ultra', ar: 'Imagen 4 Ultra' },
+    { id: 'gemini-2.5-flash-image', price: 0.039, en: 'Gemini 2.5 Flash Image (Nano Banana)', ar: 'Gemini 2.5 Flash Image (Nano Banana)' },
+    { id: 'imagen-4.0-generate-001', price: 0.04, en: 'Imagen 4', ar: 'Imagen 4' },
+    { id: 'imagen-4.0-fast-generate-001', price: 0.02, en: 'Imagen 4 Fast', ar: 'Imagen 4 Fast' },
+    { id: 'imagen-4.0-ultra-generate-001', price: 0.06, en: 'Imagen 4 Ultra', ar: 'Imagen 4 Ultra' },
   ],
   async generate(r) {
     const aspectRatio = nearest(r.ratio, ['1:1', '4:3', '3:4', '16:9', '9:16']), model = r.model.trim().replace(/^models\//, '');
@@ -276,10 +277,10 @@ const together: Provider = {
   steps: [['Sign up at together.ai and add credit.', 'أنشئ حساباً في together.ai وأضف رصيداً.'], ['Copy your API key from Settings → API keys and paste it here.', 'انسخ مفتاحك من Settings ← API keys والصقه هنا.']],
   anyModel: true,
   models: [
-    { id: 'black-forest-labs/FLUX.1-schnell', en: 'FLUX.1 schnell', ar: 'FLUX.1 schnell' },
-    { id: 'black-forest-labs/FLUX.1-dev', en: 'FLUX.1 dev', ar: 'FLUX.1 dev' },
-    { id: 'black-forest-labs/FLUX.1.1-pro', en: 'FLUX 1.1 pro', ar: 'FLUX 1.1 pro' },
-    { id: 'black-forest-labs/FLUX.1-kontext-pro', en: 'FLUX Kontext pro', ar: 'FLUX Kontext pro' },
+    { id: 'black-forest-labs/FLUX.1-schnell', price: 0.003, en: 'FLUX.1 schnell', ar: 'FLUX.1 schnell' },
+    { id: 'black-forest-labs/FLUX.1-dev', price: 0.025, en: 'FLUX.1 dev', ar: 'FLUX.1 dev' },
+    { id: 'black-forest-labs/FLUX.1.1-pro', price: 0.04, en: 'FLUX 1.1 pro', ar: 'FLUX 1.1 pro' },
+    { id: 'black-forest-labs/FLUX.1-kontext-pro', price: 0.04, en: 'FLUX Kontext pro', ar: 'FLUX Kontext pro' },
   ],
   async generate(r) {
     const { width, height } = pixels(r.ratio, 1024);
@@ -298,8 +299,7 @@ const openrouter: Provider = {
   steps: [['Sign up at openrouter.ai and buy credits.', 'أنشئ حساباً في openrouter.ai واشترِ رصيداً.'], ['Create a key under Keys and paste it here.', 'أنشئ مفتاحاً من Keys والصقه هنا.'], ['Any model that outputs images works: copy its name from its page.', 'يعمل أي نموذج يخرج صوراً: انسخ اسمه من صفحته.']],
   anyModel: true,
   models: [
-    { id: 'google/gemini-2.5-flash-image', en: 'Gemini 2.5 Flash Image', ar: 'Gemini 2.5 Flash Image' },
-    { id: 'openai/gpt-5-image-mini', en: 'GPT-5 Image mini', ar: 'GPT-5 Image mini' },
+    { id: 'google/gemini-2.5-flash-image', price: 0.039, en: 'Gemini 2.5 Flash Image', ar: 'Gemini 2.5 Flash Image' },
   ],
   async generate(r) {
     return some('OpenRouter', await each(r.count, async () => {
@@ -320,9 +320,9 @@ const stability: Provider = {
   keysUrl: 'https://platform.stability.ai/account/keys', pricingUrl: 'https://platform.stability.ai/pricing',
   steps: [['Sign up at platform.stability.ai and buy credits.', 'أنشئ حساباً في platform.stability.ai واشترِ رصيداً.'], ['Copy your key from Account → API keys and paste it here.', 'انسخ مفتاحك من Account ← API keys والصقه هنا.']],
   models: [
-    { id: 'core', en: 'Stable Image Core', ar: 'Stable Image Core' },
-    { id: 'ultra', en: 'Stable Image Ultra', ar: 'Stable Image Ultra' },
-    { id: 'sd3', en: 'Stable Diffusion 3.5', ar: 'Stable Diffusion 3.5' },
+    { id: 'core', price: 0.03, en: 'Stable Image Core', ar: 'Stable Image Core' },
+    { id: 'ultra', price: 0.08, en: 'Stable Image Ultra', ar: 'Stable Image Ultra' },
+    { id: 'sd3', price: 0.065, en: 'Stable Diffusion 3.5', ar: 'Stable Diffusion 3.5' },
   ],
   async generate(r) {
     return some('Stability AI', await each(r.count, async () => {

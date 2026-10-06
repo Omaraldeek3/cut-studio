@@ -161,9 +161,10 @@ export function GenerateWorkspace({ lang, onSendImage }: { lang: Language; onSen
   }
 
   const dollars = (n: number) => `$${n < 0.1 ? String(+n.toFixed(3)) : n.toFixed(2)}`;
+  const prices = service.pricingUrl ? <a href={service.pricingUrl} target="_blank" rel="noreferrer">{tx(lang, `${service.name} prices`, `أسعار ${service.name}`)}</a> : null;
   const costLine = cost !== undefined
-    ? tx(lang, `About ${dollars(cost)} from your ${service.name} balance for this request.`, `نحو ${dollars(cost)} من رصيدك في ${service.name} لهذا الطلب.`)
-    : service.pricingUrl ? <>{tx(lang, `${service.name} bills your account at its own prices: `, `يحسب ${service.name} التكلفة على حسابك بأسعاره: `)}<a href={service.pricingUrl} target="_blank" rel="noreferrer">{tx(lang, 'see the prices', 'الأسعار')}</a></>
+    ? <>{tx(lang, `About ${dollars(cost)} from your ${service.name} balance for this request (${dollars(listed!.price!)} a design). `, `نحو ${dollars(cost)} من رصيدك في ${service.name} لهذا الطلب (${dollars(listed!.price!)} للتصميم). `)}{prices && <>{tx(lang, 'Prices change; check: ', 'الأسعار قد تتغير، راجع: ')}{prices}</>}</>
+    : prices ? <>{tx(lang, 'This model’s price is not listed here. Check it before drawing: ', 'سعر هذا النموذج غير مسجّل هنا. راجعه قبل الرسم: ')}{prices}</>
     : tx(lang, 'The service bills you at its own prices.', 'تحسب الخدمة التكلفة بأسعارها.');
   const vectorOut = !!listed?.vector;
 

@@ -472,3 +472,10 @@ html[dir=rtl] .flat-edges legend { float: right; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+/* A folded group: one sidebar entry, its tools picked at the top of the page. */
+.nav-count { margin-inline-start: auto; min-width: 22px; padding: 1px 6px; border-radius: 99px; background: var(--sunken); color: var(--ink-2); font-size: 11px; font-weight: 700; text-align: center; }
+.ready-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; margin: 0 0 16px; }
+.ready-picker a { display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r1); background: var(--surface); color: var(--ink-2); font-size: 13px; font-weight: 600; text-decoration: none; }
+.ready-picker a:hover { color: var(--ink); border-color: var(--ink-3, var(--line)); }
+.ready-picker a.selected { border-color: var(--ink); background: var(--sunken); color: var(--ink); font-weight: 750; }

@@ -10,6 +10,7 @@ import type { WorkerRequest } from './upscale.worker';
 import { colorPdf, colorSvg, cutDrawing, layerParts, outlineSvg, outputHeight, resultToDrawing } from './vector-export';
 import { smallDetails } from './check';
 import { decodeImage, ImageDrop, IMAGE_TYPES, saveFile, usePastedImage } from './image-input';
+import type { Handover } from './generate-workspace';
 
 /* The image-to-vector tool. It re-traces on its own a moment after any
    setting changes, so every slider shows its effect without a button press,
@@ -64,6 +65,17 @@ function RasterCanvas({ raster, className }: { raster: Raster; className?: strin
   return <canvas ref={canvas} className={className} aria-hidden="true" />;
 }
 
+/** The result with some colours swapped for others, the way a print job is
+ *  matched to a brand's colours. A swapped colour is flat: its gradients go. */
+function recolour(result: VectorResult, swaps: Record<string, string>): VectorResult {
+  if (!Object.keys(swaps).length) return result;
+  return {
+    ...result,
+    layers: result.layers.map(layer => swaps[layer.color] ? { ...layer, color: swaps[layer.color], shades: undefined } : layer),
+    palette: result.palette.map(entry => swaps[entry.color] ? { ...entry, color: swaps[entry.color] } : entry),
+  };
+}
+
 function VectorArt({ result, outline }: { result: VectorResult; outline: boolean }) {
   return (
     <svg className="vz-art" viewBox={`0 0 ${result.width} ${result.height}`} role="img" aria-label="Traced vector">
@@ -92,7 +104,7 @@ const PRESETS: { id: string; en: string; ar: string; options: Partial<VectorizeO
   { id: 'vinyl', en: 'Vinyl cut-out', ar: 'قص فينيل', options: { mode: 'color', colors: 4, layering: 'cutout', removeBackground: true, denoise: true, detail: 45, smoothing: 50, corners: 65 } },
 ];
 
-export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (drawing: Drawing) => void }) {
+export function VectorizeWorkspace({ lang, onNest, incoming }: { lang: Language; onNest: (drawing: Drawing) => void; incoming?: Handover | null }) {
   const [source, setSource] = useState<Source>(() => ({ raster: sampleArtwork(), name: 'sample', naturalWidth: 360, naturalHeight: 260, scaled: false }));
   const [options, setOptions] = useState<VectorizeOptions>({ ...defaultVectorize, colors: 12 });
   const [width, setWidth] = useState(300);
@@ -106,6 +118,8 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
   const [view, setView] = useState<'vector' | 'original' | 'compare'>('vector');
   const [zoom, setZoom] = useState(1);
   const [split, setSplit] = useState(50);
+  // Colours the user swapped, keyed by the colour the trace found.
+  const [swaps, setSwaps] = useState<Record<string, string>>({});
   const worker = useRef<Worker | null>(null);
   const [ai, setAi] = useState(true);
   const [enhanced, setEnhanced] = useState<Enhanced | null>(null);
@@ -119,12 +133,14 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
   const traceRaster = aiUsed && aiDone?.raster ? aiDone.raster : source.raster;
 
   const key = JSON.stringify(options);
-  const result = job && job.source === source ? job.result : null;
+  const traced = job && job.source === source ? job.result : null;
+  const result = useMemo(() => (traced ? recolour(traced, swaps) : null), [traced, swaps]);
   const stale = !job || job.source !== source || job.key !== key || job.raster !== traceRaster;
   const outline = options.mode === 'outline';
   const set = <K extends keyof VectorizeOptions>(name: K) => (value: VectorizeOptions[K]) => setOptions(o => ({ ...o, [name]: value }));
 
-  const load = useCallback(async (file: File) => {
+  // A preset, when given, is applied with the new picture, as a handed-over design asks.
+  const load = useCallback(async (file: File, preset?: string) => {
     if (!IMAGE_TYPES.includes(file.type)) { setError(tx(lang, 'Choose a PNG, JPEG, WebP, GIF or BMP image.', 'اختر صورة PNG أو JPEG أو WebP أو GIF أو BMP.')); return; }
     if (file.size > 40 * 1024 * 1024) { setError(tx(lang, 'Choose an image smaller than 40 MB.', 'اختر صورة أصغر من ٤٠ ميغابايت.')); return; }
     setLoading(true);
@@ -132,7 +148,9 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
     try {
       const decoded = await decodeImage(file, WORKING_PIXELS);
       setSource({ ...decoded, name: file.name.replace(/\.[^.]+$/, '') || 'image' });
-      setOptions(o => ({ ...o, hidden: [] }));
+      const start = PRESETS.find(p => p.id === preset)?.options;
+      setOptions(o => ({ ...o, ...start, hidden: [] }));
+      setSwaps({});
       setAiProgress(0);
       setView('vector');
     } catch (cause) {
@@ -143,6 +161,13 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
   }, [lang]);
   const onPaste = useCallback((file: File) => { void load(file); }, [load]);
   usePastedImage(onPaste);
+  // A picture handed over by another tool, such as a generated design.
+  // It is read on the next tick, outside the render that brought it.
+  useEffect(() => {
+    if (!incoming) return;
+    const timer = setTimeout(() => void load(incoming.file, incoming.preset), 0);
+    return () => clearTimeout(timer);
+  }, [incoming, load]);
 
   // The AI enlargement runs once per picture, in the upscaler's worker.
   useEffect(() => {
@@ -216,7 +241,7 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
   const toggleColour = (color: string) =>
     setOptions(o => ({ ...o, hidden: o.hidden.includes(color) ? o.hidden.filter(c => c !== color) : [...o.hidden, color] }));
 
-  const whiteBackground = result?.palette.find(p => {
+  const whiteBackground = traced?.palette.find(p => {
     const r = parseInt(p.color.slice(1, 3), 16), g = parseInt(p.color.slice(3, 5), 16), b = parseInt(p.color.slice(5, 7), 16);
     return Math.min(r, g, b) > 232 && p.area > 0.15;
   });
@@ -329,17 +354,25 @@ export function VectorizeWorkspace({ lang, onNest }: { lang: Language; onNest: (
           <div className="vz-palette" aria-label={tx(lang, 'Colours', 'الألوان')}>
             <div className="vz-palette-head">
               <strong>{tx(lang, 'Colours', 'الألوان')}</strong>
-              <span className="micro">{tx(lang, 'Click a colour to leave it out', 'اضغط على لون لإخفائه')}</span>
+              <span className="micro">{tx(lang, 'Click a colour to leave it out, or ✎ to change it to your own', 'اضغط على لون لإخفائه، أو على ✎ لتغييره إلى لونك')}</span>
+              {traced!.palette.some(entry => swaps[entry.color]) && <button className="text-button" onClick={() => setSwaps({})}>{tx(lang, 'Original colours', 'الألوان الأصلية')}</button>}
               {whiteBackground && !whiteBackground.hidden && <button className="text-button" onClick={() => toggleColour(whiteBackground.color)}>{tx(lang, 'Remove white background', 'إزالة الخلفية البيضاء')}</button>}
             </div>
             <div className="vz-swatches">
-              {result.palette.map(entry => (
-                <button key={entry.color} className="vz-swatch" aria-pressed={!entry.hidden} onClick={() => toggleColour(entry.color)} title={entry.color}>
-                  <i style={{ background: entry.color }} />
-                  <span dir="ltr">{entry.color}</span>
-                  <small dir="ltr">{(entry.area * 100).toFixed(1)}%</small>
-                </button>
-              ))}
+              {traced!.palette.map((entry, i) => {
+                const shown = swaps[entry.color] ?? entry.color;
+                return <span key={entry.color} className="vz-swatch-pair">
+                  <button className="vz-swatch" aria-pressed={!entry.hidden} onClick={() => toggleColour(entry.color)} title={entry.color}>
+                    <i style={{ background: shown }} />
+                    <span dir="ltr">{shown}</span>
+                    <small dir="ltr">{(entry.area * 100).toFixed(1)}%</small>
+                  </button>
+                  <label className="vz-recolour" title={tx(lang, 'Change this colour', 'غيّر هذا اللون')}>
+                    <input type="color" value={shown} aria-label={`${tx(lang, 'Change colour', 'تغيير اللون')} ${i + 1}`} onChange={e => { const next = e.target.value; setSwaps(s => ({ ...s, [entry.color]: next })); }} />
+                    <span aria-hidden="true">✎</span>
+                  </label>
+                </span>;
+              })}
             </div>
           </div>
         )}

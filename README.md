@@ -7,12 +7,13 @@
 
 ![Image to vector in Cut Studio](docs/screenshots/image-to-vector-en.jpg)
 
-Cut Studio is built in and for a signage and laser workshop in Palestine. Every tool answers a job that comes through the door: a logo to cut in acrylic, an Arabic shop name for the plotter, a 6 m shop-front poster, a box of keychains to quote. The files open cleanly in CorelDRAW, Illustrator, RDWorks and LightBurn, and nothing you open ever leaves your device: there is no account and no upload.
+Cut Studio is built in and for a signage and laser workshop in Palestine. Every tool answers a job that comes through the door: a logo to cut in acrylic, an Arabic shop name for the plotter, a 6 m shop-front poster, a box of keychains to quote. The files open cleanly in CorelDRAW, Illustrator, RDWorks and LightBurn, and nothing you open ever leaves your device: there is no account and no upload. The one exception is said plainly where it happens: Design from text sends your description to Recraft, with your own key, when you ask it to draw.
 
 ## The tools
 
 **Artwork**
-- **Image to vector.** Colour tracing for print (like Illustrator's Image Trace) and clean outlines for the laser and plotter. Circles come out round and straight edges straight. In cut-out mode every border between two colours is traced once, so nothing is cut twice, and the background is dropped.
+- **Image to vector.** Colour tracing for print (like Illustrator's Image Trace) and clean outlines for the laser and plotter. Circles come out round and straight edges straight. In cut-out mode every border between two colours is traced once, so nothing is cut twice, and the background is dropped. Any traced colour can be left out or swapped for your own, to match a brand's colours before print.
+- **Design from text.** Describe a design and Recraft's AI draws it as an SVG, with your own API key, called straight from the browser. Choose what it is for (a piece to laser cut, line art to engrave, a sticker, an icon) and the description is steered to a shape the workshop can use; one click sends it to Image to vector with the matching settings for cut lines and DXF. The key is never sent anywhere but Recraft, and is remembered only if you ask.
 - **AI upscaler.** Real-ESRGAN in the browser, with a print planner (how many pixels a 6 m print needs from 5 m away), one-click common jobs, a plain explanation of every setting, a sample picture to try it on, a detail test before the long run, a before/after slider and extra sharpness for signs.
 - **Arabic lettering.** The 231 free Arabic fonts of [Harf](https://harf.omardeek.tech), any font on your computer or a font file, shaped by HarfBuzz and welded into clean cut paths. Letters cut as pieces keep their dots on: every dot, hamza and vowel mark is moved onto its letter or bridged to it, so each letter comes off the machine in one piece. Stencils get bridges instead; sign plates, mounting holes and cake toppers too.
 - **Contour & offset.** Round-cornered offsets for acrylic letter bases, weeding borders and print-and-cut sticker lines.

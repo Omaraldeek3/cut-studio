@@ -13,6 +13,7 @@ import { BoxWorkspace } from './box-workspace';
 import { EngraveWorkspace } from './engrave-workspace';
 import { VectorizeWorkspace } from './vectorize-workspace';
 import { UpscaleWorkspace } from './upscale-workspace';
+import { GenerateWorkspace, type Handover } from './generate-workspace';
 import { TilingWorkspace } from './tiling-workspace';
 import { ContourWorkspace } from './contour-workspace';
 import { LetteringWorkspace } from './lettering-workspace';
@@ -42,9 +43,13 @@ export default function Toolkit({lang}:{lang:Language}){
  const props={lang,drawing,setDrawing,filename,setFilename,onNest};
  // Hands artwork from one tool to another, e.g. lettering to contour.
  function onSend(d:Drawing,tool:ToolId,name='artwork.svg'){setDrawing(d);setFilename(name);setActive(tool);}
+ // A picture for the tracer, such as a generated design on its way to cutting lines.
+ const [handover,setHandover]=useState<Handover|null>(null);
+ function onTrace(h:Handover){setHandover(h);setActive('trace');}
  function workspace(){switch(active){
   case 'nest':return <NestWorkspace {...props} onQuote={onQuote}/>;
-  case 'trace':return <VectorizeWorkspace lang={lang} onNest={onNest}/>;
+  case 'trace':return <VectorizeWorkspace lang={lang} onNest={onNest} incoming={handover}/>;
+  case 'generate':return <GenerateWorkspace lang={lang} onTrace={onTrace}/>;
   case 'upscale':return <UpscaleWorkspace lang={lang}/>;
   case 'tiles':return <TilingWorkspace lang={lang}/>;
   case 'contour':return <ContourWorkspace {...props}/>;

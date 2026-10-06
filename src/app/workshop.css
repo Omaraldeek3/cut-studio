@@ -191,3 +191,29 @@ html[dir=rtl] .help-note { font-size: 13px; }
 .quote-message { margin: 16px 0 12px; padding: 12px 14px; border: 1px dashed var(--line-2); border-radius: var(--r1); background: var(--surface-2); white-space: pre-wrap; font: inherit; font-size: 14px; line-height: 1.7; }
 .quote-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .quote-actions .button.disabled { opacity: .45; pointer-events: none; }
+.vz-swatch-pair { display: inline-flex; align-items: center; gap: 2px; }
+.vz-recolour { position: relative; display: inline-grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface-2); color: var(--ink-3); font-size: 12px; cursor: pointer; }
+.vz-recolour:hover, .vz-recolour:focus-within { color: var(--ink); border-color: var(--ink-3); }
+.vz-recolour input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+/* Design from a description: the key, the prompt and the designs Recraft drew. */
+.gen-key-actions { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0 6px; }
+.gen-key-actions .text-button { padding: 0; }
+.gen-ok { color: var(--ok); font-weight: 600; }
+.gen-steps { margin: 0; padding-inline-start: 18px; display: grid; gap: 4px; }
+.gen-steps a { color: var(--accent-strong); font-weight: 650; }
+.gen-prompt { margin-top: 0; margin-bottom: 14px; }
+.gen-prompt .field { margin-bottom: 10px; }
+.gen-prompt textarea { width: 100%; resize: vertical; }
+.gen-go { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.gen-wait { margin: 0 0 14px; overflow: hidden; }
+.gen-wait span { width: 35%; animation: gen-slide 1.4s ease-in-out infinite; }
+@keyframes gen-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) { .gen-wait span { animation: none; width: 100%; opacity: .5; } }
+.gen-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.gen-card { margin: 0; border: 1px solid var(--line); border-radius: var(--r2); background: var(--surface); overflow: hidden; }
+.gen-art { display: grid; place-items: center; aspect-ratio: 1; padding: 10px; background: #fff; border-bottom: 1px solid var(--line); }
+.gen-art img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.gen-card figcaption { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px; }
+.gen-card figcaption .button.dark { flex: 1 1 100%; justify-content: center; }
+.gen-card figcaption .button.secondary { flex: 1 1 0; justify-content: center; }
+.ws-choice.gen-purpose { grid-template-columns: 1fr 1fr; }

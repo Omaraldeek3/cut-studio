@@ -88,17 +88,21 @@ test('any-angle turning is offered with rotation and packs the job',async({page}
  await expect(page.locator('.stats-row')).toContainText('30 / 30');
  await page.getByText('Allow 90° rotations',{exact:true}).click();await expect(page.getByText('Any angle',{exact:true})).toHaveCount(0);
 });
-test('the makers of one finished object sit together under Ready-made, with Shakl next to them',async({page})=>{
+test('the makers of one finished object sit together under Ready-made, with Shakl and Naqsh next to them',async({page})=>{
  await page.goto('/ar/vector-cleanup');
  await expect(page.getByText('قوالب جاهزة',{exact:true}).first()).toBeVisible();
  await page.goto('/en/vector-cleanup');
  const section=page.locator('.nav-group').filter({hasText:'Ready-made'});
  for(const name of ['Product templates','Polygon box','Tags & keychains','Trophy base','Gear maker','Jigsaw puzzle','Ruler maker']) await expect(section.getByRole('link',{name,exact:true})).toBeVisible();
  await expect(section.getByRole('link',{name:/Shakl/})).toHaveAttribute('href','https://shakl.omardeek.tech');
+ await expect(section.getByRole('link',{name:/Naqsh/})).toHaveAttribute('href','https://naqsh.omardeek.tech');
+ // Naqsh's SVG ornament also sits with the artwork tools.
+ await expect(page.locator('.nav-group').filter({hasText:'Artwork'}).getByRole('link',{name:/Naqsh/})).toBeVisible();
  // The box maker stays with the working tools.
  await expect(page.locator('.nav-group').filter({hasText:'Laser & CNC'}).getByRole('link',{name:'Box maker',exact:true})).toBeVisible();
  await page.getByRole('link',{name:'Gear maker',exact:true}).click();
- await expect(page.locator('.shakl-card')).toContainText('Looking for a ready 3D model?');
+ await expect(page.locator('.shakl-card').first()).toContainText('Looking for a ready 3D model?');
+ await expect(page.locator('.shakl-card').nth(1)).toContainText('Need Arabic ornament as SVG?');
  await page.getByRole('link',{name:'Box maker',exact:true}).click();
  await expect(page.locator('.shakl-card')).toHaveCount(0);
 });

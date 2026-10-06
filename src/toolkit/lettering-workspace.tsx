@@ -106,9 +106,9 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
   const [holeSize, setHoleSize] = useState(5);
   const [textOn, setTextOn] = useState<'engrave' | 'cut' | 'stencil'>('engrave');
   const [bridge, setBridge] = useState(1.5);
-  // Letters cut as pieces keep their dots on; letters cut out of a sheet need stencil bridges instead.
+  // Letters cut as pieces can have their dots joined on (off until asked); letters cut out of a sheet need stencil bridges instead.
   const [cutStyle, setCutStyle] = useState<'pieces' | 'stencil'>('pieces');
-  const [keepDots, setKeepDots] = useState(true), [dotMode, setDotMode] = useState<AnchorOptions['mode']>('auto');
+  const [keepDots, setKeepDots] = useState(false), [dotMode, setDotMode] = useState<AnchorOptions['mode']>('auto');
   const [dotDepth, setDotDepth] = useState(15), [dotBridge, setDotBridge] = useState(NaN);
   const [hb, setHb] = useState<typeof HB | null>(null);
   const [error, setError] = useState('');
@@ -274,7 +274,7 @@ export function LetteringWorkspace({ lang, onSend }: { lang: Language; onSend: (
           </div>}
           {piecesCut && <>
             <Toggle label={tx(lang, 'Keep the dots on their letters', 'ثبّت النقاط على حروفها')} value={keepDots} onChange={setKeepDots} />
-            <p className="micro">{tx(lang, 'Dots, hamzas and vowel marks are small separate pieces that drop through the bed. This joins each one to its letter, so every letter comes off the machine in one piece.', 'النقاط والهمزات والحركات قطع صغيرة منفصلة تسقط من شبكة الماكينة. هذا الخيار يصل كل واحدة منها بحرفها، فيخرج كل حرف من الماكينة قطعة واحدة.')}</p>
+            <p className="micro">{tx(lang, 'Off, the dots, hamzas and vowel marks stay where the font puts them, as small separate pieces. Turn this on to join each one to its letter, so every letter comes off the machine in one piece.', 'النقاط والهمزات والحركات تبقى كما في الخط، قطعاً صغيرة منفصلة. فعّل هذا الخيار ليصل كل واحدة منها بحرفها، فيخرج كل حرف من الماكينة قطعة واحدة.')}</p>
             {keepDots && <>
               <div className="preset-row" role="radiogroup" aria-label={tx(lang, 'How to join them', 'طريقة التثبيت')}>{([['auto', tx(lang, 'Automatic', 'تلقائي')], ['move', tx(lang, 'Move onto the letter', 'قرّبها حتى تلتصق')], ['bridge', tx(lang, 'Keep in place, bridge', 'مكانها مع جسر')]] as const).map(([id, label]) => <button key={id} role="radio" aria-checked={dotMode === id} className={dotMode === id ? 'selected' : ''} onClick={() => setDotMode(id)}>{label}</button>)}</div>
               <p className="micro">{dotMode === 'auto' ? tx(lang, 'A dot close to its letter is moved down or up until it sinks into it; one further away keeps its place and gets a short bridge.', 'النقطة القريبة من حرفها تنزل أو تصعد حتى تلتصق به، والبعيدة تبقى مكانها ويصلها جسر قصير.')

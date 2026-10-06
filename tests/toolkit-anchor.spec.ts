@@ -70,7 +70,7 @@ test("Arabic in Tajawal comes out as one piece per word, every dot on its letter
   }
 });
 
-test("Arabic lettering keeps the dots on by default, and explains the stencil instead when asked", async ({ page }) => {
+test("Arabic lettering leaves the dots loose until asked, and explains the stencil instead when asked", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.route("https://harf.omardeek.tech/**", route => route.abort());
@@ -78,11 +78,11 @@ test("Arabic lettering keeps the dots on by default, and explains the stencil in
   const parts = page.locator(".stat").filter({ hasText: "Parts" }).locator("strong");
   await expect(page.getByText("Ready to cut", { exact: true })).toBeVisible();
   // افتتاح قريباً: 17 pieces with every dot loose, 5 letters and words with them on.
+  await expect(parts).toHaveText("17");
+  await expect(page.locator(".lt-anchored")).toHaveCount(0);
+  await page.getByText("Keep the dots on their letters", { exact: true }).click();
   await expect(parts).toHaveText("5");
   await expect(page.locator(".lt-anchored")).toHaveText("12 marks joined to their letters.");
-  await page.getByText("Keep the dots on their letters", { exact: true }).click();
-  await expect(parts).toHaveText("17");
-  await page.getByText("Keep the dots on their letters", { exact: true }).click();
   await page.getByRole("radio", { name: "Keep in place, bridge" }).click();
   await expect(parts).toHaveText("5");
   await expect(page.getByText(/stays where the font put it/)).toBeVisible();

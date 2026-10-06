@@ -2,18 +2,20 @@ export type Language='en'|'ar';
 export const toolIds=['trace','generate','upscale','lettering','contour','clean','repeat','nest','box','hinge','pattern','engrave','testcard','kerf','cnc','feeds','tiles','sheet','dpi','quote','templates','polybox','tag','trophy','gear','puzzle','ruler'] as const;
 export type ToolId=typeof toolIds[number];
 /** A site of its own that sits in the sidebar next to the tools. */
-export type OutsideLink={href:string;title:[string,string];note:[string,string]};
+export type OutsideLink={href:string;icon:'cube'|'ornament';title:[string,string];note:[string,string];cta:[string,string];ask:[string,string]};
 export const SHAKL_URL='https://shakl.omardeek.tech';
-export const shakl:OutsideLink={href:SHAKL_URL,title:['Shakl · 3D models','شكل · مجسّمات جاهزة'],note:['Laser-cut 3D models you preview, resize and download: houses, boxes, lanterns, desk organisers and more.','مجسّمات للقص بالليزر تعاينها ثلاثية الأبعاد وتغيّر مقاسها وتنزّلها: بيوت وصناديق وفوانيس ومنظّمات مكتب وغيرها.']};
+export const shakl:OutsideLink={href:SHAKL_URL,icon:'cube',cta:['Open Shakl','افتح مكتبة شكل'],ask:['Looking for a ready 3D model?','تبحث عن مجسّم جاهز ثلاثي الأبعاد؟'],title:['Shakl · 3D models','شكل · مجسّمات جاهزة'],note:['Laser-cut 3D models you preview, resize and download: houses, boxes, lanterns, desk organisers and more.','مجسّمات للقص بالليزر تعاينها ثلاثية الأبعاد وتغيّر مقاسها وتنزّلها: بيوت وصناديق وفوانيس ومنظّمات مكتب وغيرها.']};
+export const NAQSH_URL='https://naqsh.omardeek.tech';
+export const naqsh:OutsideLink={href:NAQSH_URL,icon:'ornament',cta:['Open Naqsh','افتح مكتبة نقش'],ask:['Need Arabic ornament as SVG?','تحتاج زخرفة عربية بصيغة SVG؟'],title:['Naqsh · SVG ornament','نقش · زخارف SVG'],note:['Original Arabic and Islamic patterns, frames and dividers as clean SVG, free to download and cut.','أنماط وإطارات وفواصل عربية وإسلامية أصلية بصيغة SVG نظيفة، مجانية للتنزيل والقص.']};
 /** The tools grouped the way a workshop thinks about them, in toolIds order.
  *  The working tools come first; the makers of one finished object (a gear,
  *  a puzzle, a polygon box) sit together at the end as ready-made templates. */
 export const groups:{id:string;title:[string,string];tools:ToolId[];links?:OutsideLink[]}[]=[
-  {id:'artwork',title:['Artwork','التصميم'],tools:['trace','generate','upscale','lettering','contour','clean','repeat']},
+  {id:'artwork',title:['Artwork','التصميم'],tools:['trace','generate','upscale','lettering','contour','clean','repeat'],links:[naqsh]},
   {id:'laser',title:['Laser & CNC','الليزر والقص'],tools:['nest','box','hinge','pattern','engrave','testcard','kerf','cnc','feeds']},
   {id:'print',title:['Print','الطباعة'],tools:['tiles','sheet','dpi']},
   {id:'business',title:['Business','الأعمال'],tools:['quote']},
-  {id:'ready',title:['Ready-made','قوالب جاهزة'],tools:['templates','polybox','tag','trophy','gear','puzzle','ruler'],links:[shakl]},
+  {id:'ready',title:['Ready-made','قوالب جاهزة'],tools:['templates','polybox','tag','trophy','gear','puzzle','ruler'],links:[shakl,naqsh]},
 ];
 export const groupOf=(id:ToolId)=>groups.find(g=>g.tools.includes(id))!;
 

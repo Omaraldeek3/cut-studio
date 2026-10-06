@@ -195,7 +195,8 @@ html[dir=rtl] .help-note { font-size: 13px; }
 .vz-recolour { position: relative; display: inline-grid; place-items: center; width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface-2); color: var(--ink-3); font-size: 12px; cursor: pointer; }
 .vz-recolour:hover, .vz-recolour:focus-within { color: var(--ink); border-color: var(--ink-3); }
 .vz-recolour input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-/* Design from a description: the key, the prompt and the designs Recraft drew. */
+/* Design from a description: the service and key, the prompt and the designs drawn. */
+.gen-by { flex-basis: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3, var(--ink-2)); }
 .gen-key-actions { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 4px 0 6px; }
 .gen-key-actions .text-button { padding: 0; }
 .gen-ok { color: var(--ok); font-weight: 600; }

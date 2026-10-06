@@ -185,12 +185,7 @@ const EXACT: Record<string, string> = {
   'The font could not be loaded.': 'تعذّر تحميل الخط.',
   'The Harf font library could not be reached.': 'تعذّر الوصول إلى مكتبة خطوط حرف.',
   'This font has no files.': 'لا توجد ملفات لهذا الخط.',
-  'Recraft did not accept this API key. Copy it again from your Recraft profile.': 'لم يقبل Recraft هذا المفتاح. انسخه مرة أخرى من ملفك في Recraft.',
-  'Your Recraft balance is not enough for this design. Add API units in Recraft, then try again.': 'رصيدك في Recraft لا يكفي لهذا التصميم. أضف وحدات API في Recraft ثم حاول مرة أخرى.',
-  'Recraft is limiting requests for a moment. Wait a minute and try again.': 'Recraft يحدّ من الطلبات مؤقتاً. انتظر دقيقة ثم حاول مرة أخرى.',
-  'Recraft would not draw this description. Change the wording and try again.': 'رفض Recraft رسم هذا الوصف. غيّر الصياغة ثم حاول مرة أخرى.',
-  'Recraft could not make the design. Try again in a moment.': 'تعذّر على Recraft إنشاء التصميم. حاول بعد قليل.',
-  'Recraft could not be reached. Check your internet connection.': 'تعذّر الوصول إلى Recraft. تحقق من اتصالك بالإنترنت.',
+  'Enter the service address, starting with https://.': 'أدخل عنوان الخدمة، ويبدأ بـ https://.',
   'This image could not be opened. Very large files may need to be saved as JPEG first.': 'تعذّر فتح الصورة. الملفات الكبيرة جداً قد تحتاج حفظها بصيغة JPEG أولاً.',
   'This image could not be opened.': 'تعذّر فتح الصورة.',
   'Upscaling failed.': 'تعذّر تكبير الصورة.',
@@ -216,7 +211,19 @@ const EXACT: Record<string, string> = {
   'Vectorizing failed.': 'تعذّر التحويل إلى فيكتور.',
 };
 
+/** An AI service's name in a message; the user's own service has no name. */
+const service = (name: string) => (name === 'The service' ? 'الخدمة' : name);
 const PATTERNS: [RegExp, (...m: string[]) => string][] = [
+  // The AI services, named in each message (Recraft, fal.ai, OpenAI…).
+  [/^(.+) did not accept this API key\. Copy it again from .+\.$/, name => `لم يقبل ${service(name)} هذا المفتاح. انسخه مرة أخرى من ${name === 'The service' ? 'الخدمة' : `حسابك في ${name}`}.`],
+  [/^Your balance with the service is not enough for this design\. Add credit, then try again\.$/, () => 'رصيدك في الخدمة لا يكفي لهذا التصميم. أضف رصيداً ثم حاول مرة أخرى.'],
+  [/^Your (.+) balance is not enough for this design\. Add credit, then try again\.$/, name => `رصيدك في ${name} لا يكفي لهذا التصميم. أضف رصيداً ثم حاول مرة أخرى.`],
+  [/^(.+) is limiting requests for a moment\. Wait a minute and try again\.$/, name => `${service(name)} يحدّ من الطلبات مؤقتاً. انتظر دقيقة ثم حاول مرة أخرى.`],
+  [/^(.+) does not know the model “(.+)”\. Check its name on (.+)\.$/, (name, model) => `لا يعرف ${service(name)} النموذج «${model}». تحقق من اسمه في ${service(name)}.`],
+  [/^(.+) would not draw this description\. Change the wording and try again\.$/, name => `رفض ${service(name)} رسم هذا الوصف. غيّر الصياغة ثم حاول مرة أخرى.`],
+  [/^(.+) could not make the design\. Try again in a moment\.$/, name => `تعذّر على ${service(name)} إنشاء التصميم. حاول بعد قليل.`],
+  [/^(.+) could not make the design: (.+)$/, (name, detail) => `تعذّر على ${service(name)} إنشاء التصميم: ${detail}`],
+  [/^(.+) could not be reached\. Check your internet connection\.$/, name => `تعذّر الوصول إلى ${service(name)}. تحقق من اتصالك بالإنترنت.`],
   [/^(.+) must be between (-?[\d.,]+) and (-?[\d.,]+)\.$/, (name, min, max) => `${field(name)} يجب أن يكون بين ${min} و${max}.`],
   [/^(.+) must be above zero\.$/, name => `${field(name)} يجب أن يكون أكبر من صفر.`],
   [/^(.+): enter a value from (-?[\d.,]+) to (-?[\d.,]+)\.$/, (name, min, max) => `${field(name)}: أدخل قيمة من ${min} إلى ${max}.`],

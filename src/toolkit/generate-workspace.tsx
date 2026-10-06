@@ -4,16 +4,21 @@ import Link from 'next/link';
 import { slugs, tx, type Language } from './copy';
 import { ErrorNote, Help, Icon, Range, Section, Stat, Toggle } from './ui';
 import { saveFile } from './image-input';
-import { composePrompt, estimate, MAX_DESCRIPTION, purposes, ratios, recraftAccount, recraftGenerate, recraftModels, RECRAFT_KEYS_URL, RECRAFT_PRICING_URL, storedKey, storeKey, svgToPng, watchStoredKey } from './recraft';
+import {
+  composePrompt, estimate, MAX_COUNT, MAX_DESCRIPTION, PROVIDERS, provider as providerOf, purposes, ratios,
+  storeBase, storedBase, storedKey, storedProvider, storeKey, storeProvider, toPng, watchStore,
+  type Account, type ProviderId, type Result,
+} from './image-ai';
 
 /* Design from a description. Every other tool works on this computer; this
-   one asks Recraft's AI to draw, with the user's own API key, because drawing
-   a picture from words needs a model far too big to run in a browser. The
-   design comes back as an SVG, and from here it goes to the tracer for
-   cutting lines, or straight to the user as a file. */
+   one asks an AI image model to draw, through the user's own account with
+   Recraft, fal.ai (FLUX and hundreds more), OpenAI, Google and others,
+   because drawing a picture from words needs a model far too big to run in a
+   browser. From here a design goes to the tracer for cutting lines, or
+   straight to the user as a file. */
 
 export type Handover = { file: File; preset?: string };
-type Design = { id: number; svg: string; url: string; prompt: string; purpose: string; ratio: string };
+type Design = { id: number; result: Result; url: string; purpose: string; by: string };
 
 const examples: [string, string][] = [
   ['A camel walking past two palm trees', 'جمل يمشي بجانب نخلتين'],
@@ -21,21 +26,29 @@ const examples: [string, string][] = [
   ['A falcon with open wings', 'صقر بجناحين مفتوحين'],
   ['A lantern with a crescent moon', 'فانوس رمضان مع هلال'],
 ];
+const OTHER = '__other__';
+const extension = (type: string) => (/svg/.test(type) ? 'svg' : /jpe?g/.test(type) ? 'jpg' : /webp/.test(type) ? 'webp' : 'png');
 
 let nextId = 1;
 
 export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: (handover: Handover) => void }) {
-  // A key remembered on an earlier visit is used until the user types another.
-  const saved = useSyncExternalStore(watchStoredKey, storedKey, () => '');
-  const [draft, setDraft] = useState<string | null>(null);
-  const [rememberChoice, setRememberChoice] = useState<boolean | null>(null);
-  const key = draft ?? saved;
-  const remember = rememberChoice ?? !!saved;
-  const [account, setAccount] = useState<{ name: string; credits: number } | null>(null);
+  // The service used last time, and a key remembered on an earlier visit, are used until the user picks another.
+  const lastProvider = useSyncExternalStore(watchStore, storedProvider, () => 'recraft' as ProviderId);
+  const [choice, setChoice] = useState<ProviderId | null>(null);
+  const id = choice ?? lastProvider, service = providerOf(id);
+  const saved = useSyncExternalStore(watchStore, () => storedKey(id), () => '');
+  const savedBase = useSyncExternalStore(watchStore, storedBase, () => '');
+  const [drafts, setDrafts] = useState<Partial<Record<ProviderId, string>>>({});
+  const [rememberChoice, setRememberChoice] = useState<Partial<Record<ProviderId, boolean>>>({});
+  const [baseDraft, setBaseDraft] = useState<string | null>(null);
+  const key = drafts[id] ?? saved, base = baseDraft ?? savedBase;
+  const remember = rememberChoice[id] ?? !!saved;
+  const [models, setModels] = useState<Partial<Record<ProviderId, string>>>({});
+  const [typed, setTyped] = useState<Partial<Record<ProviderId, string>>>({});
+  const [account, setAccount] = useState<(Account & { for: ProviderId }) | null>(null);
   const [checking, setChecking] = useState(false);
   const [description, setDescription] = useState('');
   const [purpose, setPurpose] = useState(purposes[0].id);
-  const [model, setModel] = useState(recraftModels[0].id);
   const [ratio, setRatio] = useState<string>('1:1');
   const [count, setCount] = useState(2);
   const [designs, setDesigns] = useState<Design[]>([]);
@@ -46,33 +59,49 @@ export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: 
 
   useEffect(() => () => { abort.current?.abort(); urls.current.forEach(URL.revokeObjectURL); }, []);
 
+  const picked = models[id] ?? (service.models[0]?.id ?? OTHER);
+  const model = (picked === OTHER ? typed[id] ?? '' : picked).trim();
+  const listed = service.models.find(m => m.id === model);
   const chosenPurpose = purposes.find(p => p.id === purpose)!;
-  const chosenModel = recraftModels.find(m => m.id === model)!;
-  const cost = estimate(chosenModel, count);
+  const cost = estimate(listed, count);
   const trimmedKey = key.trim();
-  const canGenerate = !!trimmedKey && description.trim().length >= 3 && !busy;
+  // A service of one's own may need no key; every other service does.
+  const ready = (service.needsBase ? /^https?:\/\/./.test(base.trim()) : !!trimmedKey) && !!model;
+  const canGenerate = ready && description.trim().length >= 3 && !busy;
+  const shown = account?.for === id ? account : null;
 
+  function pickService(next: ProviderId) {
+    setChoice(next);
+    storeProvider(next);
+    setError('');
+  }
   function changeKey(next: string) {
-    setDraft(next);
+    setDrafts(all => ({ ...all, [id]: next }));
     setAccount(null);
-    if (remember) storeKey(next.trim());
+    if (remember) storeKey(id, next.trim());
   }
   function changeRemember(on: boolean) {
-    setRememberChoice(on);
-    storeKey(on ? trimmedKey : '');
+    setRememberChoice(all => ({ ...all, [id]: on }));
+    storeKey(id, on ? trimmedKey : '');
+    if (service.needsBase) storeBase(on ? base.trim() : '');
+  }
+  function changeBase(next: string) {
+    setBaseDraft(next);
+    if (remember) storeBase(next.trim());
   }
   function forget() {
-    storeKey('');
-    setDraft('');
-    setRememberChoice(false);
+    storeKey(id, '');
+    if (service.needsBase) { storeBase(''); setBaseDraft(''); }
+    setDrafts(all => ({ ...all, [id]: '' }));
+    setRememberChoice(all => ({ ...all, [id]: false }));
     setAccount(null);
   }
 
   async function check() {
-    if (!trimmedKey) return;
+    if (!trimmedKey || !service.account) return;
     setChecking(true);
     setError('');
-    try { setAccount(await recraftAccount(trimmedKey)); }
+    try { setAccount({ ...(await service.account(trimmedKey, undefined, base)), for: id }); }
     catch (cause) { setAccount(null); setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setChecking(false); }
   }
@@ -86,15 +115,15 @@ export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: 
     setError('');
     const prompt = composePrompt(description, chosenPurpose);
     try {
-      const svgs = await recraftGenerate({ key: trimmedKey, prompt, model, ratio, count, signal: controller.signal });
-      const made = svgs.map(svg => {
-        const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+      const results = await service.generate({ key: trimmedKey, prompt, model, ratio, count, base, signal: controller.signal });
+      const made = results.map(result => {
+        const url = URL.createObjectURL(result.blob);
         urls.current.push(url);
-        return { id: nextId++, svg, url, prompt, purpose, ratio };
+        return { id: nextId++, result, url, purpose, by: `${service.name} · ${model}` };
       });
       setDesigns(list => [...made, ...list].slice(0, 24));
       // The balance just went down: ask for it again if it is on show.
-      if (account) recraftAccount(trimmedKey).then(setAccount, () => setAccount(null));
+      if (shown && service.account) service.account(trimmedKey, undefined, base).then(a => setAccount({ ...a, for: id }), () => setAccount(null));
     } catch (cause) {
       if (!(cause instanceof Error && cause.name === 'AbortError')) setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -110,7 +139,7 @@ export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: 
 
   async function toTracer(design: Design) {
     try {
-      const png = await svgToPng(design.svg);
+      const png = await toPng(design.result);
       const preset = purposes.find(p => p.id === design.purpose)?.trace || undefined;
       onTrace({ file: new File([png], `design-${design.id}.png`, { type: 'image/png' }), preset });
     } catch (cause) {
@@ -118,32 +147,46 @@ export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: 
     }
   }
 
-  async function savePng(design: Design) {
-    try { saveFile(await svgToPng(design.svg, 3000), `design-${design.id}.png`, 'image/png'); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  async function savePicture(design: Design) {
+    try {
+      if (design.result.svg) saveFile(await toPng(design.result, 3000), `design-${design.id}.png`, 'image/png');
+      else saveFile(design.result.blob, `design-${design.id}.${extension(design.result.blob.type)}`, design.result.blob.type || 'image/png');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
   }
 
   const dollars = (n: number) => `$${n < 0.1 ? String(+n.toFixed(3)) : n.toFixed(2)}`;
+  const costLine = cost !== undefined
+    ? tx(lang, `About ${dollars(cost)} from your ${service.name} balance for this request.`, `نحو ${dollars(cost)} من رصيدك في ${service.name} لهذا الطلب.`)
+    : service.pricingUrl ? <>{tx(lang, `${service.name} bills your account at its own prices: `, `يحسب ${service.name} التكلفة على حسابك بأسعاره: `)}<a href={service.pricingUrl} target="_blank" rel="noreferrer">{tx(lang, 'see the prices', 'الأسعار')}</a></>
+    : tx(lang, 'The service bills you at its own prices.', 'تحسب الخدمة التكلفة بأسعارها.');
+  const vectorOut = !!listed?.vector;
 
   return <>
     <div className="workspace">
       <aside className="controls">
-        <Section title={tx(lang, 'Your Recraft key', 'مفتاح Recraft الخاص بك')} number="01">
-          <label className="field"><span>{tx(lang, 'API key', 'مفتاح API')}</span>
+        <Section title={tx(lang, 'Service and key', 'الخدمة والمفتاح')} number="01">
+          <label className="field"><span>{tx(lang, 'AI service', 'خدمة الذكاء الاصطناعي')}</span>
+            <select value={id} onChange={e => pickService(e.target.value as ProviderId)}>
+              {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.id === 'custom' ? tx(lang, 'Another service (OpenAI-compatible)', 'خدمة أخرى (متوافقة مع OpenAI)') : p.id === 'recraft' ? tx(lang, 'Recraft · true vectors', 'Recraft · فيكتور حقيقي') : p.id === 'fal' ? tx(lang, 'fal.ai · FLUX and hundreds more', 'fal.ai · FLUX ومئات غيره') : p.name}</option>)}
+            </select>
+          </label>
+          {service.needsBase && <label className="field"><span>{tx(lang, 'API address', 'عنوان API')}</span>
+            <input type="url" dir="ltr" autoComplete="off" spellCheck={false} value={base} placeholder="https://api.example.com/v1" onChange={e => changeBase(e.target.value)} />
+          </label>}
+          <label className="field"><span>{tx(lang, 'API key', 'مفتاح API')}{service.needsBase ? tx(lang, ' (if the service needs one)', ' (إن احتاجته الخدمة)') : ''}</span>
             <input type="password" dir="ltr" autoComplete="off" spellCheck={false} value={key} placeholder="••••••••••••" onChange={e => changeKey(e.target.value)} />
           </label>
           <Toggle label={tx(lang, 'Remember it on this computer', 'تذكّره على هذا الجهاز')} value={remember} onChange={changeRemember} />
           <div className="gen-key-actions">
-            <button className="text-button" type="button" disabled={!trimmedKey || checking} onClick={() => void check()}>{checking ? tx(lang, 'Checking…', 'جارٍ الفحص…') : tx(lang, 'Check the key and balance', 'افحص المفتاح والرصيد')}</button>
+            {service.account && <button className="text-button" type="button" disabled={!trimmedKey || checking} onClick={() => void check()}>{checking ? tx(lang, 'Checking…', 'جارٍ الفحص…') : tx(lang, 'Check the key and balance', 'افحص المفتاح والرصيد')}</button>}
             {(key || remember) && <button className="text-button" type="button" onClick={forget}>{tx(lang, 'Forget the key', 'انسَ المفتاح')}</button>}
           </div>
-          {account && <p className="micro gen-ok" role="status">✓ {tx(lang, 'Key accepted', 'المفتاح صحيح')}{account.name ? ` · ${account.name}` : ''}{Number.isFinite(account.credits) ? ` · ${tx(lang, 'balance', 'الرصيد')} ${account.credits} ${tx(lang, 'units', 'وحدة')}` : ''}</p>}
-          <p className="micro">{tx(lang, 'The key goes from your browser straight to Recraft and is never sent to Cut Studio. Unless you switch on “Remember”, it is gone when you close the page.', 'يذهب المفتاح من متصفحك إلى Recraft مباشرة ولا يُرسل إلى Cut Studio أبداً. ما لم تفعّل «تذكّره»، يُنسى عند إغلاق الصفحة.')}</p>
+          {shown && <p className="micro gen-ok" role="status">✓ {tx(lang, 'Key accepted', 'المفتاح صحيح')}{shown.name ? ` · ${shown.name}` : ''}{shown.credits !== undefined && Number.isFinite(shown.credits) ? ` · ${tx(lang, 'balance', 'الرصيد')} ${shown.credits} ${tx(lang, ...(shown.unit ?? ['', '']))}` : ''}</p>}
+          <p className="micro">{tx(lang, `The key goes from your browser straight to ${service.needsBase ? 'that service' : service.name} and is never sent to Cut Studio. Unless you switch on “Remember”, it is gone when you close the page.`, `يذهب المفتاح من متصفحك إلى ${service.needsBase ? 'تلك الخدمة' : service.name} مباشرة ولا يُرسل إلى Cut Studio أبداً. ما لم تفعّل «تذكّره»، يُنسى عند إغلاق الصفحة.`)}</p>
           <Help lang={lang} label={tx(lang, 'How do I get a key?', 'كيف أحصل على مفتاح؟')}>
             <ol className="gen-steps">
-              <li>{tx(lang, 'Sign up at recraft.ai.', 'أنشئ حساباً في recraft.ai.')}</li>
-              <li>{tx(lang, 'Buy API units (separate from the monthly plan): ', 'اشترِ وحدات API (منفصلة عن الاشتراك الشهري): ')}<a href={RECRAFT_PRICING_URL} target="_blank" rel="noreferrer">{tx(lang, 'API prices', 'أسعار API')}</a></li>
-              <li>{tx(lang, 'Create a key on your profile page and paste it here: ', 'أنشئ مفتاحاً من صفحة ملفك والصقه هنا: ')}<a href={RECRAFT_KEYS_URL} target="_blank" rel="noreferrer">{tx(lang, 'Recraft API keys', 'مفاتيح Recraft')}</a></li>
+              {service.steps.map(step => <li key={step[0]}>{tx(lang, ...step)}</li>)}
+              {service.keysUrl && <li><a href={service.keysUrl} target="_blank" rel="noreferrer">{tx(lang, `${service.name} API keys`, `مفاتيح ${service.name}`)}</a>{service.pricingUrl && <> · <a href={service.pricingUrl} target="_blank" rel="noreferrer">{tx(lang, 'prices', 'الأسعار')}</a></>}</li>}
             </ol>
           </Help>
         </Section>
@@ -158,37 +201,44 @@ export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: 
           </div>
         </Section>
 
-        <Section title={tx(lang, 'Quality and shape', 'الجودة والشكل')} number="03">
-          <label className="field"><span>{tx(lang, 'Model', 'النموذج')}</span>
-            <select value={model} onChange={e => setModel(e.target.value)}>
-              {recraftModels.map(m => <option key={m.id} value={m.id}>{tx(lang, m.en, m.ar)} · {dollars(m.price)}</option>)}
+        <Section title={tx(lang, 'Model and shape', 'النموذج والشكل')} number="03">
+          {service.models.length > 0 && <label className="field"><span>{tx(lang, 'Model', 'النموذج')}</span>
+            <select aria-label={tx(lang, 'Model', 'النموذج')} value={picked} onChange={e => setModels(all => ({ ...all, [id]: e.target.value }))}>
+              {service.models.map(m => <option key={m.id} value={m.id}>{tx(lang, m.en, m.ar)}{m.price !== undefined ? ` · ${dollars(m.price)}` : ''}</option>)}
+              {service.anyModel && <option value={OTHER}>{tx(lang, 'Another model…', 'نموذج آخر…')}</option>}
             </select>
-          </label>
+          </label>}
+          {picked === OTHER && <label className="field"><span>{tx(lang, 'Model name, as the service writes it', 'اسم النموذج كما تكتبه الخدمة')}</span>
+            <input dir="ltr" autoComplete="off" spellCheck={false} value={typed[id] ?? ''} placeholder={id === 'fal' ? 'fal-ai/flux/dev' : id === 'openrouter' ? 'google/gemini-2.5-flash-image' : 'model-name'} onChange={e => setTyped(all => ({ ...all, [id]: e.target.value }))} />
+          </label>}
           <label className="field"><span>{tx(lang, 'Shape (width:height)', 'الشكل (العرض:الارتفاع)')}</span>
             <select value={ratio} onChange={e => setRatio(e.target.value)} dir="ltr">
               {ratios.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </label>
-          <Range label={tx(lang, 'Designs per request', 'عدد التصاميم في كل طلب')} value={count} min={1} max={4} onChange={setCount} />
-          <p className="micro">{tx(lang, `About ${dollars(cost)} from your Recraft balance for this request.`, `نحو ${dollars(cost)} من رصيدك في Recraft لهذا الطلب.`)}</p>
+          <Range label={tx(lang, 'Designs per request', 'عدد التصاميم في كل طلب')} value={count} min={1} max={MAX_COUNT} onChange={setCount} />
+          <p className="micro">{costLine}</p>
+          <p className="micro">{vectorOut
+            ? tx(lang, 'This model draws true vectors: the SVG opens in CorelDRAW and Illustrator as it is.', 'هذا النموذج يرسم فيكتوراً حقيقياً: يفتح ملف SVG في CorelDRAW وIllustrator كما هو.')
+            : tx(lang, 'This model draws a picture. “Prepare for cutting” turns it into vector lines on this computer.', 'هذا النموذج يرسم صورة. «جهّزه للقص» يحوّلها إلى خطوط فيكتور على جهازك.')}</p>
         </Section>
       </aside>
 
       <div className="canvas-column">
         <div className="canvas-toolbar">
           <span role="status" className={`status-pill ${designs.length && !busy ? 'ready' : ''}`}><i />
-            {busy ? tx(lang, 'Recraft is drawing… (10 to 30 seconds)', 'Recraft يرسم… (من ١٠ إلى ٣٠ ثانية)')
-              : designs.length ? tx(lang, 'Designs ready', 'التصاميم جاهزة') : trimmedKey ? tx(lang, 'Describe the design', 'صف التصميم') : tx(lang, 'Paste your Recraft key to begin', 'الصق مفتاح Recraft للبدء')}
+            {busy ? tx(lang, `${service.needsBase ? 'The service' : service.name} is drawing… (10 to 60 seconds)`, `${service.needsBase ? 'الخدمة ترسم' : `${service.name} يرسم`}… (من ١٠ إلى ٦٠ ثانية)`)
+              : designs.length ? tx(lang, 'Designs ready', 'التصاميم جاهزة') : ready ? tx(lang, 'Describe the design', 'صف التصميم') : tx(lang, `Paste your ${service.needsBase ? 'service address' : `${service.name} key`} to begin`, `الصق ${service.needsBase ? 'عنوان الخدمة' : `مفتاح ${service.name}`} للبدء`)}
           </span>
-          <span className="micro">{tx(lang, 'Drawn by Recraft · everything else stays on this computer', 'يرسمه Recraft · وكل ما عدا ذلك يبقى على جهازك')}</span>
+          <span className="micro">{tx(lang, 'Drawn by the service you chose · everything else stays on this computer', 'ترسمه الخدمة التي اخترتها · وكل ما عدا ذلك يبقى على جهازك')}</span>
         </div>
 
-        {!trimmedKey && <div className="up-intro">
+        {!ready && <div className="up-intro">
           <div>
             <h2>{tx(lang, 'Draw a design from words', 'ارسم تصميماً من كلمات')}</h2>
-            <p>{tx(lang, 'Write what you want, such as “a falcon with open wings”, and an AI draws it as a vector. Choose what it is for and the drawing is steered to a shape the laser cuts in one piece, line art to engrave, or a sticker in flat colours.', 'اكتب ما تريد، مثل «صقر بجناحين مفتوحين»، فيرسمه الذكاء الاصطناعي فيكتوراً. اختر لأي استخدام، فيُوجَّه الرسم إلى شكل يقصه الليزر قطعة واحدة، أو رسم خطي للحفر، أو ستيكر بألوان مسطحة.')}</p>
+            <p>{tx(lang, 'Write what you want, such as “a falcon with open wings”, and an AI image model draws it. Choose what it is for and the drawing is steered to a shape the laser cuts in one piece, line art to engrave, or a sticker in flat colours.', 'اكتب ما تريد، مثل «صقر بجناحين مفتوحين»، فيرسمه نموذج صور بالذكاء الاصطناعي. اختر لأي استخدام، فيُوجَّه الرسم إلى شكل يقصه الليزر قطعة واحدة، أو رسم خطي للحفر، أو ستيكر بألوان مسطحة.')}</p>
             <ul>
-              <li><b aria-hidden="true">✓</b>{tx(lang, 'Uses your own Recraft account: a few cents a design, paid to Recraft.', 'يعمل بحسابك في Recraft: بضعة سنتات للتصميم تُدفع لـ Recraft.')}</li>
+              <li><b aria-hidden="true">✓</b>{tx(lang, 'Works with your own account: Recraft for true vectors, fal.ai for FLUX and hundreds of models, OpenAI, Google, Together, OpenRouter, Stability, or any OpenAI-compatible service.', 'يعمل بحسابك أنت: Recraft للفيكتور الحقيقي، وfal.ai لنماذج FLUX ومئات غيرها، وOpenAI وGoogle وTogether وOpenRouter وStability، أو أي خدمة متوافقة مع OpenAI.')}</li>
               <li><b aria-hidden="true">✗</b><span>{tx(lang, 'No key? Draw or photograph your idea and turn it into a vector on this computer: ', 'ليس لديك مفتاح؟ ارسم فكرتك أو صوّرها وحوّلها إلى فيكتور على جهازك: ')}<Link href={`/${lang}/${slugs.trace}`}>{tx(lang, 'Image to vector', 'تحويل صورة إلى فيكتور')}</Link></span></li>
             </ul>
           </div>
@@ -207,7 +257,7 @@ export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: 
             {busy
               ? <button className="button secondary" type="button" onClick={cancel}>{tx(lang, 'Cancel', 'إلغاء')}</button>
               : <button className="button dark" type="button" disabled={!canGenerate} onClick={() => void generate()}><Icon name="generate" size={16} />{tx(lang, `Draw ${count === 1 ? 'one design' : `${count} designs`}`, count === 1 ? 'ارسم تصميماً واحداً' : `ارسم ${count} تصاميم`)}</button>}
-            <span className="micro" dir="ltr">≈ {dollars(cost)}</span>
+            {cost !== undefined && <span className="micro" dir="ltr">≈ {dollars(cost)}</span>}
           </div>
           <ErrorNote error={error} lang={lang} />
         </div>
@@ -218,13 +268,14 @@ export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: 
           {designs.map(design => (
             <figure key={design.id} className="gen-card">
               <div className="gen-art">
-                {/* eslint-disable-next-line @next/next/no-img-element -- an SVG from Recraft shown as an image, so nothing in it can run */}
+                {/* eslint-disable-next-line @next/next/no-img-element -- a generated SVG shown as an image, so nothing in it can run */}
                 <img src={design.url} alt={tx(lang, 'Generated design', 'تصميم مولَّد')} />
               </div>
               <figcaption>
                 <button className="button dark" type="button" onClick={() => void toTracer(design)}>{tx(lang, 'Prepare for cutting', 'جهّزه للقص')} ↗</button>
-                <button className="button secondary" type="button" onClick={() => saveFile(design.svg, `design-${design.id}.svg`, 'image/svg+xml')}><Icon name="download" size={16} />SVG</button>
-                <button className="button secondary" type="button" onClick={() => void savePng(design)}><Icon name="download" size={16} />PNG</button>
+                {design.result.svg && <button className="button secondary" type="button" onClick={() => saveFile(design.result.svg!, `design-${design.id}.svg`, 'image/svg+xml')}><Icon name="download" size={16} />SVG</button>}
+                <button className="button secondary" type="button" onClick={() => void savePicture(design)}><Icon name="download" size={16} />{design.result.svg ? 'PNG' : extension(design.result.blob.type).toUpperCase()}</button>
+                <small className="micro gen-by" dir="ltr">{design.by}</small>
               </figcaption>
             </figure>
           ))}
@@ -232,12 +283,12 @@ export function GenerateWorkspace({ lang, onTrace }: { lang: Language; onTrace: 
 
         <div className="stats-row">
           <Stat label={tx(lang, 'Designs', 'التصاميم')} value={designs.length || '—'} />
-          <Stat label={tx(lang, 'Cost per request', 'تكلفة الطلب')} value={dollars(cost)} />
-          <Stat label={tx(lang, 'Output', 'الناتج')} value="SVG" />
+          <Stat label={tx(lang, 'Cost per request', 'تكلفة الطلب')} value={cost !== undefined ? dollars(cost) : tx(lang, 'Service price', 'سعر الخدمة')} />
+          <Stat label={tx(lang, 'Output', 'الناتج')} value={vectorOut ? 'SVG' : tx(lang, 'Picture', 'صورة')} />
         </div>
         <div className="tip-card"><span className="tip-mark">i</span><p>{tx(lang,
-          '“Prepare for cutting” opens the design in Image to vector with the settings for its purpose, so you get clean cut lines, a DXF and the nesting from there. The SVG is Recraft’s own drawing, for print and for editing in CorelDRAW or Illustrator.',
-          '«جهّزه للقص» يفتح التصميم في «تحويل صورة إلى فيكتور» بإعدادات استخدامه، فتحصل منه على خطوط قص نظيفة وملف DXF وترتيب القطع. وملف SVG هو رسم Recraft نفسه، للطباعة وللتعديل في CorelDRAW أو Illustrator.')}</p></div>
+          '“Prepare for cutting” opens the design in Image to vector with the settings for its purpose, so you get clean cut lines, a DXF and the nesting from there. A Recraft vector model also gives its own SVG, for print and for editing in CorelDRAW or Illustrator.',
+          '«جهّزه للقص» يفتح التصميم في «تحويل صورة إلى فيكتور» بإعدادات استخدامه، فتحصل منه على خطوط قص نظيفة وملف DXF وترتيب القطع. ونماذج Recraft الفيكتورية تعطي أيضاً ملف SVG الخاص بها، للطباعة وللتعديل في CorelDRAW أو Illustrator.')}</p></div>
       </div>
     </div>
   </>;
